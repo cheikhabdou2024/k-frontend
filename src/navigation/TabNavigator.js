@@ -6,9 +6,11 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 // Import screens
 import FeedScreen from '../screens/feed/FeedScreen';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
-import CreateScreen from '../screens/create/CreateScreen';
 import InboxScreen from '../screens/inbox/InboxScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+
+// Import navigators
+import CreateNavigator from './CreateNavigator';
 
 // Tab icons
 import { TABS } from '../constants/routes';
@@ -107,7 +109,7 @@ const TabNavigator = () => {
       />
       <Tab.Screen 
         name={TABS.CREATE} 
-        component={CreateScreen}
+        component={CreateNavigator}
         options={{ tabBarLabel: 'Create' }}
       />
       <Tab.Screen 
