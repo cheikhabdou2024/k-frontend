@@ -2,6 +2,8 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import ProfileNavigator from './ProfileNavigator';
+
 
 // Import screens
 import FeedScreen from '../screens/feed/FeedScreen';
@@ -118,10 +120,10 @@ const TabNavigator = () => {
         options={{ tabBarLabel: 'Inbox' }}
       />
       <Tab.Screen 
-        name={TABS.PROFILE} 
-        component={ProfileScreen}
-        options={{ tabBarLabel: 'Profile' }}
-      />
+         name={TABS.PROFILE} 
+         component={ProfileNavigator}
+         options={{ tabBarLabel: 'Profile' }}
+/>
     </Tab.Navigator>
   );
 };

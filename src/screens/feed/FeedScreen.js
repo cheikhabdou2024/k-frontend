@@ -18,8 +18,7 @@ import { Video } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FEED_TYPES } from '../../components/feed/FeedHeader';
-import FeedHeader from '../../components/feed/EnhancedFeedHeader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import VideoCaption from '../../components/feed/EnhancedVideoCaption';
 import VideoLoadingSpinner from '../../components/feed/VideoLoadingSpinner';
 import HeartAnimation from '../../components/feed/EnhancedHeartAnimation';
@@ -27,8 +26,17 @@ import FeedScrollIndicator from '../../components/feed/FeedScrollIndicator';
 import { formatCount } from '../../utils/formatters';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import ProgressBar from '../../components/video/progressBar';
+import PlayPauseIndicator from '../../components/video/PlayPauseIndicator';
 
 const { width, height } = Dimensions.get('window');
+
+// Feed types 
+export const FEED_TYPES = {
+  EXPLORE: 'explore',
+  FOLLOWING: 'following',
+  FOR_YOU: 'for_you',
+};
 
 // Mock video data
 const mockVideos = [
@@ -42,6 +50,7 @@ const mockVideos = [
     comments: 432,
     shares: 123,
     isLiked: false,
+    location: 'London 🇬🇧❤️',
     user: {
       id: 'u2',
       username: 'creator2',
@@ -123,8 +132,13 @@ const FeedScreen = () => {
   const [videoLoading, setVideoLoading] = useState({});
   const [showHeartAnimation, setShowHeartAnimation] = useState({});
   const [soundIconAnimating, setSoundIconAnimating] = useState(false);
+  const [playbackStatus, setPlaybackStatus] = useState({});
+  const [showPlayPauseIndicator, setShowPlayPauseIndicator] = useState(false);
+  const [isVideoPaused, setIsVideoPaused] = useState(false);
+  const [bookmark, setBookmark] = useState({});
   
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   
   // Animated value for scroll position
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -222,6 +236,19 @@ const FeedScreen = () => {
     setShowHeartAnimation(prev => ({ ...prev, [videoId]: false }));
   }, []);
   
+  // Handle comments press
+  const handleCommentPress = (videoId) => {
+    navigation.navigate('CommentsScreen', { videoId });
+  };
+
+  // Handle bookmark press
+  const handleBookmarkPress = (videoId) => {
+    setBookmark(prev => ({ 
+      ...prev, 
+      [videoId]: !prev[videoId] 
+    }));
+  };
+  
   // Handle like action
   const handleLikeVideo = useCallback((videoId, doubleTap = false) => {
     // Update videos array to toggle like status
@@ -268,10 +295,19 @@ const FeedScreen = () => {
         const videoRef = videoRefs.current[videoId];
         if (videoRef) {
           videoRef.getStatusAsync().then(status => {
-            if (status.isPlaying) {
-              videoRef.pauseAsync();
-            } else {
+            const newPlayingState = !status.isPlaying;
+            setIsVideoPaused(!newPlayingState);
+            setShowPlayPauseIndicator(true);
+            
+            // Hide indicator after a brief delay
+            setTimeout(() => {
+              setShowPlayPauseIndicator(false);
+            }, 1000);
+            
+            if (newPlayingState) {
               videoRef.playAsync();
+            } else {
+              videoRef.pauseAsync();
             }
           });
         }
@@ -281,6 +317,13 @@ const FeedScreen = () => {
     // Update last tap time
     lastTapTimeRef.current[videoId] = now;
   }, [handleLikeVideo]);
+
+  // Add a new function to track playback status:
+  const onPlaybackStatusUpdate = useCallback((status, videoId) => {
+    if (videoId === videos[currentIndex]?.id) {
+      setPlaybackStatus(status);
+    }
+  }, [currentIndex, videos]);
 
   // Handle scroll events to update animation values
   const handleScroll = Animated.event(
@@ -353,15 +396,57 @@ const FeedScreen = () => {
   
   // Handle user profile press
   const handleUserProfilePress = (userId) => {
-    // In a real app, navigate to user profile
-    console.log('Navigate to user profile:', userId);
+    // Navigate to profile tab, then to the specific profile
+    navigation.navigate('Profile', { 
+      screen: 'ProfileHome',
+      params: { userId } 
+    });
   };
+
+  // Render top navigation tabs
+  const renderTopTabs = () => (
+    <View style={[styles.topTabsContainer, { paddingTop: insets.top }]}>
+      <TouchableOpacity 
+        style={styles.tabIconButton}
+        onPress={() => handleTabChange(FEED_TYPES.EXPLORE)}
+      >
+        <Ionicons name="tv-outline" size={24} color="#fff" />
+      </TouchableOpacity>
+      
+      <View style={styles.tabsRow}>
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab !== FEED_TYPES.FOLLOWING && styles.inactiveTab]}
+          onPress={() => handleTabChange(FEED_TYPES.FOLLOWING)}
+        >
+          <Text style={[styles.tabText, activeTab !== FEED_TYPES.FOLLOWING && styles.inactiveTabText]}>
+            Following
+          </Text>
+          {activeTab === FEED_TYPES.FOLLOWING && <View style={styles.activeTabIndicator} />}
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab !== FEED_TYPES.FOR_YOU && styles.inactiveTab]}
+          onPress={() => handleTabChange(FEED_TYPES.FOR_YOU)}
+        >
+          <Text style={[styles.tabText, activeTab !== FEED_TYPES.FOR_YOU && styles.inactiveTabText]}>
+            For You
+          </Text>
+          {activeTab === FEED_TYPES.FOR_YOU && <View style={styles.activeTabIndicator} />}
+        </TouchableOpacity>
+      </View>
+      
+      <TouchableOpacity style={styles.tabIconButton}>
+        <Ionicons name="search" size={24} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
 
   // Render a single video item
   const renderItem = ({ item, index }) => {
     const isActive = index === currentIndex;
     const isVideoLoading = videoLoading[item.id];
     const isHeartAnimationVisible = showHeartAnimation[item.id] || false;
+    const isBookmarked = bookmark[item.id] || false;
 
     return (
       <View style={styles.videoContainer}>
@@ -383,9 +468,18 @@ const FeedScreen = () => {
             onError={(error) => onVideoError(item.id, error)}
             rate={1.0}
             volume={1.0}
+            onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
           />
           
-          {/* Gradient overlay for better text contrast */}
+          {/* Top gradient overlay */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.4)', 'transparent']}
+            style={styles.topGradient}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+          />
+          
+          {/* Bottom gradient overlay for better text contrast */}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)']}
             style={styles.gradientOverlay}
@@ -393,12 +487,28 @@ const FeedScreen = () => {
             end={{ x: 0.5, y: 1 }}
           />
           
+          {/* Top navigation */}
+          {renderTopTabs()}
+          
           {/* Loading Spinner */}
           <VideoLoadingSpinner 
             isVisible={isVideoLoading} 
             size="medium" 
           />
           
+          {/* PlayPause Indicator */}
+          <PlayPauseIndicator 
+            isPlaying={!isVideoPaused}
+            isVisible={showPlayPauseIndicator && isActive} 
+          />
+
+          {/* Progress Bar */}
+          <ProgressBar 
+            progress={item.id === videos[currentIndex]?.id && playbackStatus.positionMillis ? 
+              playbackStatus.positionMillis / playbackStatus.durationMillis : 0}
+            isVisible={isActive}
+          />
+
           {/* Heart Animation */}
           <HeartAnimation
             isVisible={isHeartAnimationVisible}
@@ -406,127 +516,116 @@ const FeedScreen = () => {
             size="large"
           />
           
+          {/* Action Buttons - Right Side */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleUserProfilePress(item.user.id)}
+            >
+              <View style={styles.actionIconContainer}>
+                <Image
+                  source={{ uri: item.user.avatarUrl }}
+                  style={styles.actionAvatar}
+                />
+                <View style={styles.plusButtonSmall}>
+                  <Ionicons name="add" size={10} color="#FFF" />
+                </View>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleLikeVideo(item.id)}
+            >
+              <View style={styles.actionIconContainer}>
+                <Ionicons 
+                  name={item.isLiked ? "heart" : "heart-outline"} 
+                  size={28} 
+                  color={item.isLiked ? "#FE2C55" : "#FFF"} 
+                />
+              </View>
+              <Text style={styles.actionText}>{formatCount(item.likes)}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleCommentPress(item.id)}
+            > 
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="chatbubble-ellipses-outline" size={26} color="#FFF" />
+              </View>
+              <Text style={styles.actionText}>{formatCount(item.comments)}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleBookmarkPress(item.id)}
+            >
+              <View style={styles.actionIconContainer}>
+                <Ionicons 
+                  name={isBookmarked ? "bookmark" : "bookmark-outline"} 
+                  size={26} 
+                  color="#FFF" 
+                />
+              </View>
+              <Text style={styles.actionText}>{formatCount(568)}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleSharePress(item.id)}
+            >
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="arrow-redo-outline" size={26} color="#FFF" />
+              </View>
+              <Text style={styles.actionText}>{formatCount(201)}</Text>
+            </TouchableOpacity>
+            
+            <Animatable.View 
+              animation="rotate"
+              iterationCount="infinite" 
+              duration={3000}
+              easing="linear"
+              style={styles.musicDiscContainer}
+            >
+              <Image
+                source={{ uri: item.user.avatarUrl }}
+                style={styles.actionMusicDisc}
+              />
+            </Animatable.View>
+          </View>
+          
           {/* User Info Overlay */}
           <View style={styles.userInfoContainer}>
-            <View style={styles.userInfo}>
-              <TouchableOpacity 
-                style={styles.userProfileImageContainer}
-                onPress={() => handleUserProfilePress(item.user.id)}
-              >
-                <Image
-                  source={{ uri: item.user.avatarUrl }}
-                  style={styles.userProfileImage}
-                />
-                
-                <View style={styles.followButton}>
-                  <Ionicons name="add" size={15} color="#FFF" />
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity onPress={() => handleUserProfilePress(item.user.id)}>
-                <Text style={styles.username}>@{item.user.username}</Text>
-              </TouchableOpacity>
-              
-              <VideoCaption
-                caption={item.caption}
-                onHashtag={handleHashtagPress}
-                onUserMention={handleUserMentionPress}
-                maxLines={2}
-              />
-              
-              {/* Sound Info */}
-              <TouchableOpacity 
-                style={styles.soundInfo}
-                onPress={() => handleSoundPress(item.sound.id)}
-              >
-                <Animatable.View
-                  animation={soundIconAnimating && isActive ? "pulse" : undefined}
-                  iterationCount={2}
-                  duration={400}
-                >
-                  <Ionicons name="musical-notes" size={16} color="#FFF" />
-                </Animatable.View>
-                <Text style={styles.soundText}>
-                  {item.sound.name}
-                </Text>
-                <Animatable.View
-                  animation="rotate"
-                  iterationCount="infinite"
-                  duration={3000}
-                  easing="linear"
-                  style={styles.musicDisc}
-                >
-                  <Image
-                    source={{ uri: item.user.avatarUrl }}
-                    style={styles.musicDiscImage}
-                  />
-                </Animatable.View>
-              </TouchableOpacity>
-            </View>
+            {/* Username and caption */}
+            <Text style={styles.videoUsername}>
+              {item.user.username} <Text style={styles.fireEmoji}>🔥</Text> MR🔮✗ 🔥
+            </Text>
             
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleUserProfilePress(item.user.id)}
-              >
-                <View style={styles.actionIconContainer}>
-                  <Image
-                    source={{ uri: item.user.avatarUrl }}
-                    style={styles.actionAvatar}
-                  />
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleLikeVideo(item.id)}
-              >
-                <View style={[
-                  styles.actionIconContainer,
-                  item.isLiked && styles.likedIconContainer
-                ]}>
-                  <Ionicons 
-                    name={item.isLiked ? "heart" : "heart-outline"} 
-                    size={28} 
-                    color={item.isLiked ? "#FE2C55" : "#FFF"} 
-                  />
-                </View>
-                <Text style={styles.actionText}>{formatCount(item.likes)}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => navigation.navigate('CommentsScreen', { videoId: item.id })}
-              >
-                <View style={styles.actionIconContainer}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={26} color="#FFF" />
-                </View>
-                <Text style={styles.actionText}>{formatCount(item.comments)}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleSharePress(item.id)}
-              >
-                <View style={styles.actionIconContainer}>
-                  <Ionicons name="share-social-outline" size={26} color="#FFF" />
-                </View>
-                <Text style={styles.actionText}>{formatCount(item.shares)}</Text>
-              </TouchableOpacity>
-              
-              <Animatable.View 
-                animation="pulse" 
-                iterationCount="infinite" 
-                duration={2000}
-                style={styles.musicDiscContainer}
-              >
-                <Image
-                  source={{ uri: item.user.avatarUrl }}
-                  style={styles.actionMusicDisc}
-                />
-              </Animatable.View>
-            </View>
+            {/* Location info if available */}
+            {item.location && (
+              <Text style={styles.locationText}>
+                {item.location} insta Id:- flyingarround6 @ 
+                <Text style={styles.userHighlight}>Awara ...</Text>
+              </Text>
+            )}
+            
+            {/* Sound info */}
+            <TouchableOpacity 
+              style={styles.soundInfo}
+              onPress={() => handleSoundPress(item.sound.id)}
+            >
+              <Ionicons name="musical-note" size={16} color="#FFF" />
+              <Text style={styles.soundText}>
+                Contains: love nwantiti (ah ah ah)...
+              </Text>
+            </TouchableOpacity>
+            
+            {/* Repost banner */}
+            <TouchableOpacity style={styles.repostBanner}>
+              <Ionicons name="repeat" size={20} color="#FFF" />
+              <Text style={styles.repostText}>Repost to followers</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </View>
@@ -548,12 +647,6 @@ const FeedScreen = () => {
         translucent
         backgroundColor="transparent"
         barStyle="light-content"
-      />
-      
-      {/* Feed Header */}
-      <FeedHeader
-        activeTab={activeTab}
-        onChangeTab={handleTabChange}
       />
       
       {/* Scroll Indicator */}
@@ -585,7 +678,7 @@ const FeedScreen = () => {
             tintColor="#FE2C55"
             colors={["#FE2C55"]}
             progressBackgroundColor="#000"
-            progressViewOffset={30} // Offset for header
+            progressViewOffset={insets.top + 50} // Offset for header
           />
         }
         // Optimize FlatList performance
@@ -616,6 +709,49 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontWeight: '600',
   },
+  topTabsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tabButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    position: 'relative',
+  },
+  tabText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  inactiveTab: {},
+  inactiveTabText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '400',
+  },
+  activeTabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: '30%',
+    right: '30%',
+    height: 2,
+    backgroundColor: '#FFF',
+    borderRadius: 2,
+  },
+  tabIconButton: {
+    padding: 8,
+  },
   videoContainer: {
     width,
     height,
@@ -627,6 +763,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  topGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
   gradientOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -637,32 +780,129 @@ const styles = StyleSheet.create({
   },
   userInfoContainer: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 100,
+    left: 16,
+    right: 90,
+    zIndex: 10,
+  },
+  videoUsername: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginBottom: 5,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  fireEmoji: {
+    fontSize: 16,
+  },
+  userHighlight: {
+    color: '#EEE',
+    fontWeight: '500',
+  },
+  locationText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginBottom: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1,
+  },
+  soundInfo: {
     flexDirection: 'row',
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 90 : 60,
-    zIndex: 2,
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 12,
   },
-  userInfo: {
-    flex: 1,
-    marginRight: 80,
-    justifyContent: 'flex-end',
+  soundText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginLeft: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
-  userProfileImageContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 10,
+  repostBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginTop: 8,
+  },
+  repostText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  actionButtons: {
+    position: 'absolute',
+    right: 10,
+    bottom: 120,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  actionButton: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  actionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  actionAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
     borderColor: '#FFF',
-    position: 'relative',
   },
-  userProfileImage: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  plusButtonSmall: {
+    position: 'absolute',
+    bottom: -4,
+    left: '50%',
+    marginLeft: -8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FE2C55',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1.5,
+  },
+  musicDiscContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#111',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 12,
+    borderColor: '#000',
+    overflow: 'hidden',
+  },
+  actionMusicDisc: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   followButton: {
     position: 'absolute',
@@ -684,19 +924,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
-  soundInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  soundText: {
-    color: '#FFF',
-    fontSize: 14,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-    marginHorizontal: 8,
-  },
   musicDisc: {
     width: 16,
     height: 16,
@@ -710,57 +937,19 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
   },
-  actionButtons: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  actionButton: {
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  actionIconContainer: {
-    width: 45,
-    height: 45,
+  userProfileImageContainer: {
+    width: 50,
+    height: 50,
     borderRadius: 25,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 5,
-  },
-  likedIconContainer: {
-    backgroundColor: 'rgba(254, 44, 85, 0.2)',
-  },
-  actionAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    marginBottom: 10,
     borderWidth: 2,
     borderColor: '#FFF',
+    position: 'relative',
   },
-  actionText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0.5, height: 0.5 },
-    textShadowRadius: 1.5,
-  },
-  musicDiscContainer: {
-    width: 45,
-    height: 45,
-    borderRadius: 25,
-    backgroundColor: '#333',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 5,
-    borderWidth: 8,
-    borderColor: '#000',
-    overflow: 'hidden',
-  },
-  actionMusicDisc: {
-    width: 37,
-    height: 37,
-    borderRadius: 18.5,
+  userProfileImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
   }
 });
 
