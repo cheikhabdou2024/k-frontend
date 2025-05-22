@@ -1,4 +1,3 @@
-// src/screens/feed/CommentsScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -12,146 +11,54 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Modal
+  Alert,
+  Keyboard
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CommentItem from '../../components/feed/CommentItem';
 import { formatCount } from '../../utils/formatters';
-import * as Speech from 'expo-speech';
+import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 
+// Import API services
+import { videoService } from '../../services/api';
+import commentService from '../../services/commentService';
+import mockDataService from '../../services/mockDataService';
+
 const { width, height } = Dimensions.get('window');
-const MODAL_HEIGHT = height * 0.7; // Modal takes 70% of screen height
+const MODAL_HEIGHT = height * 0.7;
 
-// We'll continue using your mock data
-// In src/screens/feed/CommentsScreen.js
-// Update the mockComments array structure
-
-const mockComments = [
-  {
-    id: '1',
-    content: 'This is amazing! 🔥',
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    likes: 42,
-    isLiked: false,
-    user: {
-      id: 'u1',
-      username: 'johndoe',
-      avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
-    },
-    replies: [
-      {
-        id: '1.1',
-        content: 'Thanks! Glad you liked it 😊',
-        createdAt: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
-        likes: 12,
-        isLiked: false,
-        user: {
-          id: 'current_user',
-          username: 'current_user',
-          avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',
-        }
-      }
-    ]
-  },
-  {
-    id: '2',
-    content: 'Love your content! Keep it up 👏',
-    createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    likes: 18,
-    isLiked: true,
-    user: {
-      id: 'u2',
-      username: 'sarahsmith',
-      avatarUrl: 'https://randomuser.me/api/portraits/women/32.jpg',
-    },
-    replies: []
-  },
-  // Keep the other comments as they are, but add empty replies array
-  {
-    id: '3',
-    content: 'Can you do a tutorial on this?',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-    likes: 7,
-    isLiked: false,
-    user: {
-      id: 'u3',
-      username: 'mikewilson',
-      avatarUrl: 'https://randomuser.me/api/portraits/men/51.jpg',
-    },
-    replies: [
-      {
-        id: '3.1',
-        content: 'I second this! Would love to see how it\'s done',
-        createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-        likes: 5,
-        isLiked: false,
-        user: {
-          id: 'u4',
-          username: 'emilyjones',
-          avatarUrl: 'https://randomuser.me/api/portraits/women/43.jpg',
-        }
-      },
-      {
-        id: '3.2',
-        content: 'Yes! tutorial please 🙏',
-        createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-        likes: 3,
-        isLiked: false,
-        user: {
-          id: 'u5',
-          username: 'alexthompson',
-          avatarUrl: 'https://randomuser.me/api/portraits/men/61.jpg',
-        }
-      }
-    ]
-  },
-  // Add empty replies arrays to the remaining comments
-  {
-    id: '4',
-    content: 'Just followed you! Check out my profile 🙌',
-    createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    likes: 3,
-    isLiked: false,
-    user: {
-      id: 'u4',
-      username: 'emilyjones',
-      avatarUrl: 'https://randomuser.me/api/portraits/women/43.jpg',
-    },
-    replies: []
-  },
-  {
-    id: '5',
-    content: 'The editing on this is so smooth! What app do you use?',
-    createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    likes: 12,
-    isLiked: false,
-    user: {
-      id: 'u5',
-      username: 'alexthompson',
-      avatarUrl: 'https://randomuser.me/api/portraits/men/61.jpg',
-    },
-    replies: []
-  },
-]; 
+// (Removed misplaced navigation and API code block)
 
 const CommentsScreen = ({ route, navigation }) => {
-  const { videoId } = route.params || {};
+  const { videoId, onClose } = route.params || {};
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [replyTo, setReplyTo] = useState(null);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [audioCommentUri, setAudioCommentUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isAudioMode, setIsAudioMode] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    hasMore: true
+  });
   
   const insets = useSafeAreaInsets();
   const inputRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(MODAL_HEIGHT)).current;
+  const flatListRef = useRef(null);
   const durationTimerRef = useRef(null);
   
   // Animate in when component mounts
@@ -161,11 +68,22 @@ const CommentsScreen = ({ route, navigation }) => {
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, []);
-  
-  // Cleanup recording resources
-  useEffect(() => {
+    
+    // Add keyboard listeners
+    const keyboardWillShowSub = Keyboard.addListener(
+      'keyboardWillShow',
+      () => setKeyboardVisible(true)
+    );
+    const keyboardWillHideSub = Keyboard.addListener(
+      'keyboardWillHide',
+      () => setKeyboardVisible(false)
+    );
+    
     return () => {
+      keyboardWillShowSub.remove();
+      keyboardWillHideSub.remove();
+      
+      // Clean up recording resources
       if (recording) {
         stopRecording();
       }
@@ -173,17 +91,107 @@ const CommentsScreen = ({ route, navigation }) => {
         clearInterval(durationTimerRef.current);
       }
     };
-  }, [recording]);
+  }, []);
   
-  // Load comments
+  // Load comments and comment count when component mounts
   useEffect(() => {
-    // Simulate API call to fetch comments
-    setTimeout(() => {
-      setComments(mockComments);
-      setLoading(false);
-    }, 1000);
+    if (videoId) {
+      fetchComments();
+      fetchCommentCount();
+    }
   }, [videoId]);
   
+  // Fetch comments from API
+  const fetchComments = async (page = 1, isLoadMore = false) => {
+    try {
+      if (!isLoadMore) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+      
+      console.log(`Fetching comments for video ${videoId}, page ${page}`);
+      
+      // Use mock data service for now (replace with real API when ready)
+      const response = await mockDataService.getVideoComments(videoId, page, pagination.limit);
+      
+      if (response && response.comments) {
+        if (isLoadMore) {
+          setComments(prev => [...prev, ...response.comments]);
+        } else {
+          setComments(response.comments);
+        }
+        
+        setPagination(prev => ({
+          ...prev,
+          page,
+          hasMore: response.pagination.hasMore
+        }));
+      }
+      
+      // When ready to use real API, replace above with:
+      /*
+      const response = await commentService.getVideoComments(videoId, page, pagination.limit);
+      
+      if (response && response.comments) {
+        if (isLoadMore) {
+          setComments(prev => [...prev, ...response.comments]);
+        } else {
+          setComments(response.comments);
+        }
+        
+        setPagination(prev => ({
+          ...prev,
+          page,
+          hasMore: response.pagination.hasMore
+        }));
+      }
+      */
+      
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      Alert.alert('Error', 'Failed to load comments. Please try again.');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
+    }
+  };
+  
+  // Fetch comment count
+  const fetchCommentCount = async () => {
+    try {
+      // Use mock data service
+      const response = await mockDataService.getCommentCount(videoId);
+      if (response && typeof response.count === 'number') {
+        setCommentCount(response.count);
+      }
+      
+      // When ready to use real API, replace above with:
+      /*
+      const response = await commentService.getCommentCount(videoId);
+      if (response && typeof response.count === 'number') {
+        setCommentCount(response.count);
+      }
+      */
+    } catch (error) {
+      console.error('Error fetching comment count:', error);
+    }
+  };
+  
+  // Load more comments
+  const loadMoreComments = () => {
+    if (!loadingMore && pagination.hasMore) {
+      fetchComments(pagination.page + 1, true);
+    }
+  };
+  
+  // Handle pull to refresh
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchComments(1, false);
+  };
+
   // Handle closing the modal with animation
   const handleClose = () => {
     Animated.timing(slideAnim, {
@@ -191,6 +199,7 @@ const CommentsScreen = ({ route, navigation }) => {
       duration: 250,
       useNativeDriver: true,
     }).start(() => {
+      if (onClose) onClose();
       navigation.goBack();
     });
   };
@@ -198,20 +207,19 @@ const CommentsScreen = ({ route, navigation }) => {
   // Start audio recording
   const startRecording = async () => {
     try {
-      // Request permissions
       const permissionResult = await Audio.requestPermissionsAsync();
       if (permissionResult.status !== 'granted') {
-        alert('Permission to record audio denied');
+        Alert.alert('Permission required', 'Please allow microphone access to record audio comments.');
         return;
       }
       
-      // Set audio mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
       
-      // Start recording
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
       const recording = new Audio.Recording();
       await recording.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
       await recording.startAsync();
@@ -219,12 +227,18 @@ const CommentsScreen = ({ route, navigation }) => {
       setIsRecording(true);
       setRecordingDuration(0);
       
-      // Start timer for recording duration
       durationTimerRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
+        setRecordingDuration(prev => {
+          if (prev >= 30) {
+            stopRecording();
+            return 30;
+          }
+          return prev + 1;
+        });
       }, 1000);
     } catch (error) {
       console.error('Failed to start recording', error);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   };
   
@@ -233,17 +247,16 @@ const CommentsScreen = ({ route, navigation }) => {
     try {
       if (!recording) return;
       
-      // Stop recording
       await recording.stopAndUnloadAsync();
       clearInterval(durationTimerRef.current);
       
-      // Get recording URI
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
       const uri = recording.getURI();
       setAudioCommentUri(uri);
       setRecording(null);
       setIsRecording(false);
       
-      // Reset audio mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
       });
@@ -283,74 +296,93 @@ const CommentsScreen = ({ route, navigation }) => {
   };
   
   // Post audio comment
-  const postAudioComment = () => {
+  const postAudioComment = async () => {
     if (!audioCommentUri) return;
     
-    // Create new comment object with audio
-    const newCommentObj = {
-      id: `comment_${Date.now()}`,
-      content: "🎤 Voice comment",
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      isLiked: false,
-      isAudio: true,
-      audioUri: audioCommentUri,
-      user: {
-        id: 'current_user',
-        username: 'current_user',
-        avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',
-      },
-      replies: []
-    };
-    
-    // Add to comments list at the beginning
-    setComments([newCommentObj, ...comments]);
-    setAudioCommentUri(null);
+    try {
+      setPosting(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Use mock data service
+      const newComment = await mockDataService.addAudioComment(
+        videoId, 
+        audioCommentUri, 
+        recordingDuration
+      );
+      
+      setComments([newComment, ...comments]);
+      setCommentCount(prev => prev + 1);
+      setAudioCommentUri(null);
+      
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+      }
+      
+      // When ready to use real API, replace above with:
+      /*
+      const response = await commentService.addComment(videoId, "🎤 Voice comment", authToken);
+      if (response) {
+        setComments([response, ...comments]);
+        setCommentCount(prev => prev + 1);
+        setAudioCommentUri(null);
+        
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+      }
+      */
+    } catch (error) {
+      console.error('Error posting audio comment:', error);
+      Alert.alert('Error', 'Failed to post comment. Please try again.');
+    } finally {
+      setPosting(false);
+    }
   };
   
   // Handle posting a text comment
-  const handlePostComment = () => {
+  const handlePostComment = async () => {
     if (isAudioMode && audioCommentUri) {
-      postAudioComment();
+      await postAudioComment();
       return;
     }
     
     if (!newComment.trim()) return;
     
-    // Create new comment object
-    const newCommentObj = {
-      id: `comment_${Date.now()}`,
-      content: newComment,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      isLiked: false,
-      user: {
-        id: 'current_user',
-        username: 'current_user',
-        avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',
-      },
-      replies: []
-    };
-    
-    // If replying to a comment, add as a reply instead
-    if (replyTo) {
-      setComments(prevComments => 
-        prevComments.map(comment => {
-          if (comment.id === replyTo.commentId) {
-            return {
-              ...comment,
-              replies: [...(comment.replies || []), newCommentObj]
-            };
-          }
-          return comment;
-        })
-      );
-    } else {
-      // Add to comments list at the beginning
-      setComments([newCommentObj, ...comments]);
+    try {
+      setPosting(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Use mock data service
+      const addedComment = await mockDataService.addComment(videoId, newComment.trim());
+      
+      setComments([addedComment, ...comments]);
+      setCommentCount(prev => prev + 1);
+      setNewComment('');
+      
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+      }
+      
+      // When ready to use real API, replace above with:
+      /*
+      const response = await commentService.addComment(videoId, newComment, authToken);
+      if (response) {
+        setComments([response, ...comments]);
+        setCommentCount(prev => prev + 1);
+        setNewComment('');
+        
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+      }
+      */
+      
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      Alert.alert('Error', 'Failed to post comment. Please try again.');
+    } finally {
+      setPosting(false);
     }
-    
-    setNewComment('');
     
     // Clear reply if any
     if (replyTo) {
@@ -359,37 +391,51 @@ const CommentsScreen = ({ route, navigation }) => {
   };
   
   // Handle like comment
-  const handleLikeComment = (commentId, isReply = false, parentId = null) => {
-    setComments(prevComments => 
-      prevComments.map(comment => {
-        // If this is a reply, find the parent comment
-        if (isReply && comment.id === parentId) {
-          return {
-            ...comment,
-            replies: comment.replies.map(reply => {
-              if (reply.id === commentId) {
-                return {
-                  ...reply,
-                  isLiked: !reply.isLiked,
-                  likes: reply.isLiked ? Math.max(0, reply.likes - 1) : reply.likes + 1
-                };
-              }
-              return reply;
-            })
-          };
-        }
-        
-        // If this is a main comment
-        if (!isReply && comment.id === commentId) {
-          return {
-            ...comment,
-            isLiked: !comment.isLiked,
-            likes: comment.isLiked ? Math.max(0, comment.likes - 1) : comment.likes + 1
-          };
-        }
-        return comment;
-      })
-    );
+  const handleLikeComment = async (commentId) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Use mock data service
+      await mockDataService.toggleCommentLike(videoId, commentId);
+      
+      // Update local state
+      setComments(prevComments => 
+        prevComments.map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              isLiked: !comment.isLiked,
+              likes: comment.isLiked ? Math.max(0, (comment.likes || 0) - 1) : (comment.likes || 0) + 1
+            };
+          }
+          // Check replies too
+          if (comment.replies) {
+            return {
+              ...comment,
+              replies: comment.replies.map(reply => {
+                if (reply.id === commentId) {
+                  return {
+                    ...reply,
+                    isLiked: !reply.isLiked,
+                    likes: reply.isLiked ? Math.max(0, (reply.likes || 0) - 1) : (reply.likes || 0) + 1
+                  };
+                }
+                return reply;
+              })
+            };
+          }
+          return comment;
+        })
+      );
+      
+      // When ready to use real API, replace above with:
+      /*
+      await commentService.toggleCommentLike(commentId, authToken);
+      // Then update local state as above
+      */
+    } catch (error) {
+      console.error('Error liking comment:', error);
+    }
   };
   
   // Play audio comment
@@ -408,7 +454,6 @@ const CommentsScreen = ({ route, navigation }) => {
     setNewComment(`@${username} `);
     setIsAudioMode(false);
     
-    // Focus input
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -436,7 +481,7 @@ const CommentsScreen = ({ route, navigation }) => {
     <View style={styles.headerContainer}>
       <View style={styles.headerLine} />
       <Text style={styles.headerTitle}>
-        {formatCount(comments.length)} comments
+        {formatCount(commentCount)} comments
       </Text>
       <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
         <Ionicons name="close" size={24} color="#FFF" />
@@ -453,9 +498,7 @@ const CommentsScreen = ({ route, navigation }) => {
           { transform: [{ translateY: slideAnim }] }
         ]}
       >
-        <View style={styles.headerContainer}>
-          <View style={styles.headerLine} />
-        </View>
+        {renderHeader()}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FE2C55" />
           <Text style={styles.loadingText}>Loading comments...</Text>
@@ -467,7 +510,7 @@ const CommentsScreen = ({ route, navigation }) => {
   // Simple emoji selector component
   const EmojiSelector = () => (
     <View style={styles.emojiSelector}>
-      {["😂", "❤️", "👍", "🔥", "👏", "😍", "😮", "😢"].map(emoji => (
+      {["😂", "❤️", "👍", "🔥", "👏", "😍", "😮", "😢", "🤔", "💯", "🙌", "👀", "💕", "🥰", "😭", "🤣"].map(emoji => (
         <TouchableOpacity 
           key={emoji} 
           style={styles.emojiButton}
@@ -485,7 +528,7 @@ const CommentsScreen = ({ route, navigation }) => {
       {isRecording ? (
         <>
           <View style={styles.recordingIndicator}>
-            <View style={styles.recordingDot} />
+            <Animated.View style={styles.recordingDot} />
             <Text style={styles.recordingText}>
               Recording... {formatDuration(recordingDuration)}
             </Text>
@@ -527,13 +570,25 @@ const CommentsScreen = ({ route, navigation }) => {
     </View>
   );
   
+  // Render footer (loading more indicator)
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    
+    return (
+      <View style={styles.footerLoading}>
+        <ActivityIndicator size="small" color="#FE2C55" />
+        <Text style={styles.footerLoadingText}>Loading more comments...</Text>
+      </View>
+    );
+  };
+  
   return (
     <Animated.View 
       style={[
         styles.container, 
         { 
           paddingBottom: insets.bottom,
-          height: MODAL_HEIGHT,
+          height: MODAL_HEIGHT + (keyboardVisible ? 100 : 0),
           transform: [{ translateY: slideAnim }]
         }
       ]}
@@ -548,6 +603,7 @@ const CommentsScreen = ({ route, navigation }) => {
         
         {/* Comments list */}
         <FlatList
+          ref={flatListRef}
           data={comments}
           renderItem={({ item }) => (
             <CommentItem
@@ -558,8 +614,19 @@ const CommentsScreen = ({ route, navigation }) => {
               onPlayAudio={playAudioComment}
             />
           )}
-          keyExtractor={item => item.id}
+          keyExtractor={item => item.id.toString()}
           contentContainerStyle={styles.commentsList}
+          onEndReached={loadMoreComments}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#FE2C55"
+              colors={["#FE2C55"]}
+            />
+          }
         />
         
         {/* Reply indicator */}
@@ -582,16 +649,20 @@ const CommentsScreen = ({ route, navigation }) => {
         
         {/* Comment input */}
         <View style={styles.inputContainer}>
-          {isAudioMode ? (
+          {isAudioMode && audioCommentUri ? (
             <TouchableOpacity 
               style={[
                 styles.postButton,
-                !audioCommentUri && styles.postButtonDisabled
+                (!audioCommentUri || posting) && styles.postButtonDisabled
               ]}
               onPress={postAudioComment}
-              disabled={!audioCommentUri}
+              disabled={!audioCommentUri || posting}
             >
-              <Text style={styles.postButtonText}>Post</Text>
+              {posting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.postButtonText}>Post</Text>
+              )}
             </TouchableOpacity>
           ) : (
             <>
@@ -603,11 +674,13 @@ const CommentsScreen = ({ route, navigation }) => {
                 value={newComment}
                 onChangeText={setNewComment}
                 multiline
+                editable={!posting}
               />
               
               <TouchableOpacity 
                 style={styles.iconButton}
                 onPress={handleToggleEmojis}
+                disabled={posting}
               >
                 <Ionicons 
                   name="happy-outline" 
@@ -619,6 +692,7 @@ const CommentsScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={styles.iconButton}
                 onPress={toggleAudioMode}
+                disabled={posting}
               >
                 <Ionicons 
                   name="mic-outline" 
@@ -630,12 +704,16 @@ const CommentsScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={[
                   styles.postButton,
-                  !newComment.trim() && styles.postButtonDisabled
+                  (!newComment.trim() || posting) && styles.postButtonDisabled
                 ]}
                 onPress={handlePostComment}
-                disabled={!newComment.trim()}
+                disabled={!newComment.trim() || posting}
               >
-                <Text style={styles.postButtonText}>Post</Text>
+                {posting ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.postButtonText}>Post</Text>
+                )}
               </TouchableOpacity>
             </>
           )}
@@ -715,6 +793,16 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: 'bold',
   },
+  footerLoading: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  footerLoadingText: {
+    color: '#888',
+    marginLeft: 8,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -753,6 +841,7 @@ const styles = StyleSheet.create({
   },
   emojiSelector: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     padding: 10,
     backgroundColor: '#191919',
     borderTopWidth: 0.5,

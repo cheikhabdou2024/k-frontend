@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Animatable from 'react-native-animatable';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // Feed types
 export const FEED_TYPES = {
@@ -11,7 +11,7 @@ export const FEED_TYPES = {
 
 /**
  * Enhanced header component for the main feed screen showing For You / Following tabs
- * Includes animations and better styling to match the actual TikTok app
+ * with smoother animations and better styling
  */
 const EnhancedFeedHeader = ({ activeTab, onChangeTab }) => {
   const insets = useSafeAreaInsets();
@@ -29,52 +29,62 @@ const EnhancedFeedHeader = ({ activeTab, onChangeTab }) => {
   // Calculate animated position for the underline
   const underlinePosition = underlineAnimation.interpolate({
     inputRange: [0, 1],
-    outputRange: ['30%', '70%'], // Adjust based on your layout
+    outputRange: ['28%', '72%'], // Adjust based on layout
   });
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.tabsContainer}>
-        {/* Following Tab */}
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => onChangeTab(FEED_TYPES.FOLLOWING)}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === FEED_TYPES.FOLLOWING && styles.activeTabText,
-            ]}
-          >
-            Following
-          </Text>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.iconButton}>
+          <Ionicons name="tv-outline" size={22} color="#FFF" />
         </TouchableOpacity>
         
-        {/* For You Tab */}
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => onChangeTab(FEED_TYPES.FOR_YOU)}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === FEED_TYPES.FOR_YOU && styles.activeTabText,
-            ]}
+        <View style={styles.tabsContainer}>
+          {/* Following Tab */}
+          <TouchableOpacity
+            style={styles.tabButton}
+            onPress={() => onChangeTab(FEED_TYPES.FOLLOWING)}
+            activeOpacity={0.7}
           >
-            For You
-          </Text>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === FEED_TYPES.FOLLOWING ? styles.activeTabText : styles.inactiveTabText,
+              ]}
+            >
+              Following
+            </Text>
+          </TouchableOpacity>
+          
+          {/* For You Tab */}
+          <TouchableOpacity
+            style={styles.tabButton}
+            onPress={() => onChangeTab(FEED_TYPES.FOR_YOU)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === FEED_TYPES.FOR_YOU ? styles.activeTabText : styles.inactiveTabText,
+              ]}
+            >
+              For You
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Animated underline indicator */}
+        <Animated.View 
+          style={[
+            styles.underlineIndicator,
+            { left: underlinePosition }
+          ]}
+        />
+        
+        <TouchableOpacity style={styles.iconButton}>
+          <Ionicons name="search" size={22} color="#FFF" />
         </TouchableOpacity>
       </View>
-      
-      {/* Animated underline indicator */}
-      <Animated.View 
-        style={[
-          styles.underlineIndicator,
-          { left: underlinePosition }
-        ]}
-      />
     </View>
   );
 };
@@ -85,24 +95,32 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 10,
+    zIndex: 100,
     backgroundColor: 'transparent',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    height: 44,
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   tabsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    width: '65%',
-    height: 44,
   },
   tabButton: {
-    flex: 1,
-    alignItems: 'center',
+    paddingHorizontal: 15,
     paddingVertical: 8,
   },
   tabText: {
-    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 17,
     fontWeight: '500',
   },
@@ -110,14 +128,17 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
   },
+  inactiveTabText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
   underlineIndicator: {
     position: 'absolute',
     bottom: 0,
-    width: '6%',
+    width: 24,
     height: 3,
     backgroundColor: '#FFF',
     borderRadius: 3,
   },
 });
 
-export default EnhancedFeedHeader;  
+export default EnhancedFeedHeader;
