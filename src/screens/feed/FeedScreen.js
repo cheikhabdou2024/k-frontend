@@ -11,35 +11,116 @@ import {
   Image,
   Animated,
   RefreshControl,
-  Platform,
-  Alert
+  BackHandler,
+  Platform
 } from 'react-native';
 import { Video } from 'expo-av';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import VideoCaption from '../../components/feed/EnhancedVideoCaption';
 import VideoLoadingSpinner from '../../components/feed/VideoLoadingSpinner';
 import HeartAnimation from '../../components/feed/EnhancedHeartAnimation';
-import FeedScrollIndicator from '../../components/feed/FeedScrollIndicator';
-import EnhancedFeedHeader from '../../components/feed/EnhancedFeedHeader';
-import SoundDisk from '../../components/feed/SoundDisk';
 import { formatCount } from '../../utils/formatters';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import ProgressBar from '../../components/video/ProgressBar';
 import PlayPauseIndicator from '../../components/video/PlayPauseIndicator';
-import { videoService } from '../../services/api';
-import CommentsScreen from './CommentsScreen';
 
 const { width, height } = Dimensions.get('window');
 
-// Feed types
+// Feed types 
 export const FEED_TYPES = {
-  FOR_YOU: 'for_you',
+  EXPLORE: 'explore',
   FOLLOWING: 'following',
+  FOR_YOU: 'for_you',
 };
+
+// Mock video data
+const mockVideos = [
+  {
+    id: '29',
+    videoUrl: 'https://cdn.pixabay.com/video/2023/07/28/173530-849610807_large.mp4',
+    thumbnailUrl: '',
+    caption: 'Another cool video! #viral #dance',
+    sound: { id: 's2', name: 'Popular Song' },
+    likes: 5678,
+    comments: 432,
+    shares: 123,
+    isLiked: false,
+    location: 'London 🇬🇧❤️',
+    user: {
+      id: 'u2',
+      username: 'creator2',
+      avatarUrl: 'https://randomuser.me/api/portraits/women/32.jpg',
+    }
+  },
+  {
+    id: '31',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-waves-in-the-water-1164-large.mp4',
+    thumbnailUrl: '',
+    caption: 'Check out this amazing sunset! 🌅 #nature #sunset #views',
+    sound: { id: 's3', name: 'Chill Vibes' },
+    likes: 9245,
+    comments: 278,
+    shares: 112,
+    isLiked: false,
+    user: {
+      id: 'u3',
+      username: 'naturelover',
+      avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg',
+    }
+  },
+  {
+    id: '14',
+    videoUrl: 'https://cdn.pixabay.com/video/2023/02/09/149935-797511795_large.mp4',
+    thumbnailUrl: '',
+    caption: 'This is an awesome video! #fyp #trending',
+    sound: { id: 's1', name: 'Original Sound' },
+    likes: 1234,
+    comments: 123,
+    shares: 45,
+    isLiked: false,
+    user: {
+      id: 'u1',
+      username: 'creator1',
+      avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
+    }
+  },
+  {
+    id: '17',
+    videoUrl: 'https://cdn.pixabay.com/video/2023/07/28/173530-849610807_large.mp4',
+    thumbnailUrl: '',
+    caption: 'Another cool video! #viral #dance',
+    sound: { id: 's2', name: 'Popular Song' },
+    likes: 5678,
+    comments: 432,
+    shares: 123,
+    isLiked: false,
+    user: {
+      id: 'u2',
+      username: 'creator2',
+      avatarUrl: 'https://randomuser.me/api/portraits/women/32.jpg',
+    }
+  },
+  {
+    id: '18',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-waves-in-the-water-1164-large.mp4',
+    thumbnailUrl: '',
+    caption: 'Check out this amazing sunset! 🌅 #nature #sunset #views',
+    sound: { id: 's3', name: 'Chill Vibes' },
+    likes: 9245,
+    comments: 278,
+    shares: 112,
+    isLiked: false,
+    user: {
+      id: 'u3',
+      username: 'naturelover',
+      avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg',
+    }
+  }
+];
 
 const FeedScreen = () => {
   const [activeTab, setActiveTab] = useState(FEED_TYPES.FOR_YOU);
@@ -49,21 +130,14 @@ const FeedScreen = () => {
   const [videos, setVideos] = useState([]);
   const [videoLoading, setVideoLoading] = useState({});
   const [showHeartAnimation, setShowHeartAnimation] = useState({});
+  const [soundIconAnimating, setSoundIconAnimating] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState({});
   const [showPlayPauseIndicator, setShowPlayPauseIndicator] = useState(false);
   const [isVideoPaused, setIsVideoPaused] = useState(false);
-  const [bookmarked, setBookmarked] = useState({});
-  const [muted, setMuted] = useState(false);
-  const [pagination, setPagination] = useState({
-    total: 0,
-    page: 1,
-    limit: 10,
-    totalPages: 0,
-  });
+  const [bookmark, setBookmark] = useState({});
   
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
   
   // Animated value for scroll position
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -71,22 +145,17 @@ const FeedScreen = () => {
   // Track last tap time for double tap detection
   const lastTapTimeRef = useRef({});
   const doubleTapTimeoutRef = useRef(null);
+
   const flatListRef = useRef(null);
   const videoRefs = useRef({});
-
-  // Load videos when component mounts
-  useEffect(() => {
-    loadVideos();
-  }, []);
 
   // Handle app foreground/background state
   useFocusEffect(
     React.useCallback(() => {
-      if (isFocused) {
-        const currentVideoRef = videoRefs.current[videos[currentIndex]?.id];
-        if (currentVideoRef) {
-          currentVideoRef.playAsync();
-        }
+      // Play current video when screen gains focus
+      const currentVideoRef = videoRefs.current[videos[currentIndex]?.id];
+      if (currentVideoRef) {
+        currentVideoRef.playAsync();
       }
 
       return () => {
@@ -97,55 +166,43 @@ const FeedScreen = () => {
           }
         });
       };
-    }, [currentIndex, videos, isFocused])
+    }, [currentIndex, videos])
   );
 
+  // Load videos when component mounts
+  useEffect(() => {
+    loadVideos();
+  }, []);
+
   // Load videos function (initial or refresh)
-  const loadVideos = async (isRefreshing = false) => {
-    try {
-      if (isRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      
-      const response = await videoService.getVideos(1, 10);
-      
-      if (response && response.videos) {
-        setVideos(response.videos);
-        setPagination(response.pagination || {
-          total: response.videos.length,
-          page: 1,
-          limit: 10,
-          totalPages: 1
-        });
-      }
-    } catch (error) {
-      console.error('Error loading videos:', error);
-      Alert.alert('Error', 'Failed to load videos. Please try again.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  const loadVideos = (isRefreshing = false) => {
+    if (isRefreshing) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
     }
+    
+    // Simulate API call with random delay for more realistic behavior
+    setTimeout(() => {
+      if (isRefreshing) {
+        // For refresh, let's add a new video at the top (in real app, fetch new videos)
+        const refreshedVideos = [...mockVideos];
+        // Shuffle the array to simulate new content
+        refreshedVideos.sort(() => Math.random() - 0.5);
+        setVideos(refreshedVideos);
+        setRefreshing(false);
+        
+        // Reset to first video
+        if (flatListRef.current) {
+          flatListRef.current.scrollToIndex({ index: 0, animated: true });
+        }
+      } else {
+        setVideos(mockVideos);
+        setLoading(false);
+      }
+    }, isRefreshing ? 1500 : 1000); // Longer delay for refresh for UX
   };
   
-  // Handle load more videos when reaching end of list
-  const loadMoreVideos = async () => {
-    if (pagination.page >= pagination.totalPages) return;
-    
-    try {
-      const nextPage = pagination.page + 1;
-      const response = await videoService.getVideos(nextPage, pagination.limit);
-      
-      if (response && response.videos) {
-        setVideos(prev => [...prev, ...response.videos]);
-        setPagination(response.pagination);
-      }
-    } catch (error) {
-      console.error('Error loading more videos:', error);
-    }
-  };
-
   // Handle pull-to-refresh
   const handleRefresh = () => {
     loadVideos(true);
@@ -159,7 +216,13 @@ const FeedScreen = () => {
   // Handle video ready state
   const onVideoLoad = useCallback((videoId) => {
     setVideoLoading(prev => ({ ...prev, [videoId]: false }));
-  }, []);
+    
+    // Animate sound icon for currently visible video
+    if (videos[currentIndex]?.id === videoId) {
+      setSoundIconAnimating(true);
+      setTimeout(() => setSoundIconAnimating(false), 1000);
+    }
+  }, [currentIndex, videos]);
 
   // Handle playback errors
   const onVideoError = useCallback((videoId, error) => {
@@ -167,57 +230,19 @@ const FeedScreen = () => {
     setVideoLoading(prev => ({ ...prev, [videoId]: false }));
   }, []);
   
-  // Toggle mute state
-  const toggleMute = useCallback(() => {
-    setMuted(!muted);
-    
-    // Apply to current video
-    const currentVideoRef = videoRefs.current[videos[currentIndex]?.id];
-    if (currentVideoRef) {
-      currentVideoRef.setIsMutedAsync(!muted);
-    }
-  }, [muted, currentIndex, videos]);
-  
   // Handle heart animation end
   const onHeartAnimationEnd = useCallback((videoId) => {
     setShowHeartAnimation(prev => ({ ...prev, [videoId]: false }));
   }, []);
   
   // Handle comments press
- // In your FeedScreen.js, update the handleCommentPress function with debugging
-const handleCommentPress = async (videoId) => {
-  console.log('=== COMMENT BUTTON PRESSED ===');
-  console.log('Video ID:', videoId);
-  console.log('Navigation object:', navigation);
-  
-  try {
-    // Pause current video before opening comments
-    const currentVideoRef = videoRefs.current[videoId];
-    if (currentVideoRef) {
-      console.log('Pausing video...');
-      await currentVideoRef.pauseAsync();
-    }
-    
-    console.log('Navigating to CommentsScreen...');
-    navigation.navigate('CommentsScreen', { 
-      videoId,
-      onClose: () => {
-        console.log('Comments closed, resuming video...');
-        // Resume video when comments are closed
-        if (currentVideoRef && isFocused) {
-          currentVideoRef.playAsync();
-        }
-      }
-    });
-    console.log('Navigation call completed');
-  } catch (error) {
-    console.error('Error in handleCommentPress:', error);
-  }
-};
+  const handleCommentPress = (videoId) => {
+    navigation.navigate('CommentsScreen', { videoId });
+  };
 
   // Handle bookmark press
   const handleBookmarkPress = (videoId) => {
-    setBookmarked(prev => ({ 
+    setBookmark(prev => ({ 
       ...prev, 
       [videoId]: !prev[videoId] 
     }));
@@ -261,7 +286,7 @@ const handleCommentPress = async (videoId) => {
     
     // Check if this is a double tap (time difference less than 300ms)
     if (timeDiff < 300) {
-      // Double tap detected - like the video
+      // Double tap detected
       handleLikeVideo(videoId, true);
     } else {
       // Set a timeout for single tap action (play/pause)
@@ -292,7 +317,7 @@ const handleCommentPress = async (videoId) => {
     lastTapTimeRef.current[videoId] = now;
   }, [handleLikeVideo]);
 
-  // Function to track playback status:
+  // Add a new function to track playback status:
   const onPlaybackStatusUpdate = useCallback((status, videoId) => {
     if (videoId === videos[currentIndex]?.id) {
       setPlaybackStatus(status);
@@ -323,8 +348,6 @@ const handleCommentPress = async (videoId) => {
 
       const currentVideoRef = videoRefs.current[viewableItems[0].item.id];
       if (currentVideoRef) {
-        // Apply current mute setting
-        currentVideoRef.setIsMutedAsync(muted);
         currentVideoRef.playAsync();
       }
     }
@@ -338,44 +361,15 @@ const handleCommentPress = async (videoId) => {
   // Handle tab change
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    setLoading(true);
-    
-    // Pause current video
-    const currentVideoRef = videoRefs.current[videos[currentIndex]?.id];
-    if (currentVideoRef) {
-      currentVideoRef.pauseAsync();
+    // In a real app, you would fetch different videos based on the tab
+    // For now, just scroll back to top
+    if (flatListRef.current) {
+      flatListRef.current.scrollToIndex({ index: 0, animated: true });
+      setCurrentIndex(0);
     }
-    
-    // Load different videos based on the tab
-    const fetchVideos = async () => {
-      try {
-        let response;
-        if (tab === FEED_TYPES.FOLLOWING) {
-          // In a real app, we would need auth token here
-          // response = await videoService.getFollowingVideos(token);
-          
-          // For now, just fetch regular videos as a placeholder
-          response = await videoService.getVideos(1, 10);
-        } else {
-          response = await videoService.getVideos(1, 10);
-        }
-        
-        if (response && response.videos) {
-          setVideos(response.videos);
-          setPagination(response.pagination);
-        }
-      } catch (error) {
-        console.error(`Error loading ${tab} videos:`, error);
-        Alert.alert('Error', 'Failed to load videos. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchVideos();
   };
 
-  // Handle sound press
+  // Handle sound and avatar press (for music page navigation)
   const handleSoundPress = (soundId) => {
     // In a real app, navigate to sound details page
     console.log('Navigate to sound details:', soundId);
@@ -387,52 +381,114 @@ const handleCommentPress = async (videoId) => {
     console.log('Share video:', videoId);
   };
   
+  // Handle hashtag press
+  const handleHashtagPress = (hashtag) => {
+    // In a real app, navigate to hashtag page
+    console.log('Navigate to hashtag:', hashtag);
+  };
+  
+  // Handle user mention press
+  const handleUserMentionPress = (username) => {
+    // In a real app, navigate to user profile
+    console.log('Navigate to user profile:', username);
+  };
+  
+  // Handle user profile press
+  const handleUserProfilePress = (userId) => {
+    // Navigate to profile tab, then to the specific profile
+    navigation.navigate('Profile', { 
+      screen: 'ProfileHome',
+      params: { userId } 
+    });
+  };
+
+  // Render top navigation tabs
+  const renderTopTabs = () => (
+    <View style={[styles.topTabsContainer, { paddingTop: insets.top }]}>
+      <TouchableOpacity 
+        style={styles.tabIconButton}
+        onPress={() => handleTabChange(FEED_TYPES.EXPLORE)}
+      >
+        <Ionicons name="tv-outline" size={24} color="#fff" />
+      </TouchableOpacity>
+      
+      <View style={styles.tabsRow}>
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab !== FEED_TYPES.FOLLOWING && styles.inactiveTab]}
+          onPress={() => handleTabChange(FEED_TYPES.FOLLOWING)}
+        >
+          <Text style={[styles.tabText, activeTab !== FEED_TYPES.FOLLOWING && styles.inactiveTabText]}>
+            Following
+          </Text>
+          {activeTab === FEED_TYPES.FOLLOWING && <View style={styles.activeTabIndicator} />}
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab !== FEED_TYPES.FOR_YOU && styles.inactiveTab]}
+          onPress={() => handleTabChange(FEED_TYPES.FOR_YOU)}
+        >
+          <Text style={[styles.tabText, activeTab !== FEED_TYPES.FOR_YOU && styles.inactiveTabText]}>
+            For You
+          </Text>
+          {activeTab === FEED_TYPES.FOR_YOU && <View style={styles.activeTabIndicator} />}
+        </TouchableOpacity>
+      </View>
+      
+      <TouchableOpacity style={styles.tabIconButton}>
+        <Ionicons name="search" size={24} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+
   // Render a single video item
   const renderItem = ({ item, index }) => {
     const isActive = index === currentIndex;
     const isVideoLoading = videoLoading[item.id];
     const isHeartAnimationVisible = showHeartAnimation[item.id] || false;
-    const isBookmarked = bookmarked[item.id] || false;
+    const isBookmarked = bookmark[item.id] || false;
 
     return (
       <View style={styles.videoContainer}>
-        {/* Video component */}
-        <Video
-          ref={ref => { videoRefs.current[item.id] = ref; }}
-          source={{ uri: item.url }}
-          style={styles.video}
-          resizeMode="cover"
-          shouldPlay={isActive && isFocused}
-          isLooping
-          isMuted={muted}
-          useNativeControls={false}
-          onLoadStart={() => onVideoLoadStart(item.id)}
-          onLoad={() => onVideoLoad(item.id)}
-          onError={(error) => onVideoError(item.id, error)}
-          rate={1.0}
-          onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
-        />
-        
-        {/* Video controls with gradients and overlays */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.4)', 'transparent']}
-          style={styles.topGradient}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-        
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)']}
-          style={styles.gradientOverlay}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-        
         <TouchableOpacity
           activeOpacity={1}
-          style={StyleSheet.absoluteFill}
+          style={styles.videoWrapper}
           onPress={() => handleVideoTap(item.id)}
         >
+          <Video
+            ref={ref => { videoRefs.current[item.id] = ref; }}
+            source={{ uri: item.videoUrl }}
+            style={styles.video}
+            resizeMode="cover"
+            shouldPlay={isActive}
+            isLooping
+            useNativeControls={false}
+            onLoadStart={() => onVideoLoadStart(item.id)}
+            onLoad={() => onVideoLoad(item.id)}
+            onError={(error) => onVideoError(item.id, error)}
+            rate={1.0}
+            volume={1.0}
+            onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
+          />
+          
+          {/* Top gradient overlay */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.4)', 'transparent']}
+            style={styles.topGradient}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+          />
+          
+          {/* Bottom gradient overlay for better text contrast */}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)']}
+            style={styles.gradientOverlay}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+          />
+          
+          {/* Top navigation */}
+          {renderTopTabs()}
+          
           {/* Loading Spinner */}
           <VideoLoadingSpinner 
             isVisible={isVideoLoading} 
@@ -447,12 +503,8 @@ const handleCommentPress = async (videoId) => {
 
           {/* Progress Bar */}
           <ProgressBar 
-            progress={
-              item.id === videos[currentIndex]?.id && 
-              playbackStatus.positionMillis && 
-              playbackStatus.durationMillis ? 
-                playbackStatus.positionMillis / playbackStatus.durationMillis : 0
-            }
+            progress={item.id === videos[currentIndex]?.id && playbackStatus.positionMillis ? 
+              playbackStatus.positionMillis / playbackStatus.durationMillis : 0}
             isVisible={isActive}
           />
 
@@ -463,57 +515,19 @@ const handleCommentPress = async (videoId) => {
             size="large"
           />
           
-          {/* User Info Overlay */}
-          <View style={styles.userInfoContainer}>
-            {/* Username and caption */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Profile', {
-                screen: 'ProfileHome',
-                params: { userId: item.userId }
-              })}
-            >
-              <Text style={styles.videoUsername}>@{item.author?.username || 'username'}</Text>
-            </TouchableOpacity>
-            
-            {/* Caption */}
-            <VideoCaption 
-              caption={item.description || ''}
-              username=""
-              onHashtag={(hashtag) => console.log('Navigate to hashtag:', hashtag)}
-              onUserMention={(username) => console.log('Navigate to user:', username)}
-              maxLines={3}
-            />
-            
-            {/* Sound info */}
-            <TouchableOpacity 
-              style={styles.soundInfo}
-              onPress={() => handleSoundPress(item.soundId)}
-            >
-              <SoundDisk
-                imageUrl={item.author?.avatar || 'https://randomuser.me/api/portraits/men/32.jpg'}
-                soundName={item.title || 'Original Sound'}
-                isActive={isActive}
-                size="small"
-              />
-            </TouchableOpacity>
-          </View>
-          
           {/* Action Buttons - Right Side */}
           <View style={styles.actionButtons}>
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('Profile', {
-                screen: 'ProfileHome',
-                params: { userId: item.userId }
-              })}
+              onPress={() => handleUserProfilePress(item.user.id)}
             >
-              <View style={styles.profileContainer}>
+              <View style={styles.actionIconContainer}>
                 <Image
-                  source={{ uri: item.author?.avatar || 'https://randomuser.me/api/portraits/men/32.jpg' }}
-                  style={styles.profileImage}
+                  source={{ uri: item.user.avatarUrl }}
+                  style={styles.actionAvatar}
                 />
-                <View style={styles.followButton}>
-                  <Ionicons name="add" size={12} color="#FFF" />
+                <View style={styles.plusButtonSmall}>
+                  <Ionicons name="add" size={10} color="#FFF" />
                 </View>
               </View>
             </TouchableOpacity>
@@ -522,65 +536,94 @@ const handleCommentPress = async (videoId) => {
               style={styles.actionButton}
               onPress={() => handleLikeVideo(item.id)}
             >
-              <Animatable.View 
-                animation={item.isLiked ? "pulse" : undefined}
-                style={styles.iconContainer}
-              >
+              <View style={styles.actionIconContainer}>
                 <Ionicons 
                   name={item.isLiked ? "heart" : "heart-outline"} 
-                  size={30} 
+                  size={28} 
                   color={item.isLiked ? "#FE2C55" : "#FFF"} 
                 />
-              </Animatable.View>
-              <Text style={styles.actionText}>{formatCount(item.likes || 0)}</Text>
+              </View>
+              <Text style={styles.actionText}>{formatCount(item.likes)}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.actionButton}
               onPress={() => handleCommentPress(item.id)}
             > 
-              <View style={styles.iconContainer}>
-                <Ionicons name="chatbubble-ellipses-outline" size={28} color="#FFF" />
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="chatbubble-ellipses-outline" size={26} color="#FFF" />
               </View>
-              <Text style={styles.actionText}>{formatCount(item.comments || 12)}</Text>
+              <Text style={styles.actionText}>{formatCount(item.comments)}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.actionButton}
               onPress={() => handleBookmarkPress(item.id)}
             >
-              <View style={styles.iconContainer}>
+              <View style={styles.actionIconContainer}>
                 <Ionicons 
                   name={isBookmarked ? "bookmark" : "bookmark-outline"} 
-                  size={28} 
-                  color={isBookmarked ? "#25F4EE" : "#FFF"} 
+                  size={26} 
+                  color="#FFF" 
                 />
               </View>
-              <Text style={styles.actionText}>Save</Text>
+              <Text style={styles.actionText}>{formatCount(568)}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.actionButton}
               onPress={() => handleSharePress(item.id)}
             >
-              <View style={styles.iconContainer}>
-                <Ionicons name="arrow-redo-outline" size={28} color="#FFF" />
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="arrow-redo-outline" size={26} color="#FFF" />
               </View>
-              <Text style={styles.actionText}>Share</Text>
+              <Text style={styles.actionText}>{formatCount(201)}</Text>
             </TouchableOpacity>
             
-            {/* Mute/Unmute button */}
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={toggleMute}
+            <Animatable.View 
+              animation="rotate"
+              iterationCount="infinite" 
+              duration={3000}
+              easing="linear"
+              style={styles.musicDiscContainer}
             >
-              <View style={styles.iconContainer}>
-                <Ionicons 
-                  name={muted ? "volume-mute" : "volume-medium"} 
-                  size={28} 
-                  color="#FFF" 
-                />
-              </View>
+              <Image
+                source={{ uri: item.user.avatarUrl }}
+                style={styles.actionMusicDisc}
+              />
+            </Animatable.View>
+          </View>
+          
+          {/* User Info Overlay */}
+          <View style={styles.userInfoContainer}>
+            {/* Username and caption */}
+            <Text style={styles.videoUsername}>
+              {item.user.username} <Text style={styles.fireEmoji}>🔥</Text> MR🔮✗ 🔥
+            </Text>
+            
+            {/* Location info if available */}
+            {item.location && (
+              <Text style={styles.locationText}>
+                {item.location} insta Id:- flyingarround6 @ 
+                <Text style={styles.userHighlight}>Awara ...</Text>
+              </Text>
+            )}
+            
+            {/* Sound info */}
+            <TouchableOpacity 
+              style={styles.soundInfo}
+              onPress={() => handleSoundPress(item.sound.id)}
+            >
+              <Ionicons name="musical-note" size={16} color="#FFF" />
+              <Text style={styles.soundText}>
+                Contains: love nwantiti (ah ah ah)...
+              </Text>
+            </TouchableOpacity>
+            
+            {/* Repost banner */}
+            <TouchableOpacity style={styles.repostBanner}>
+              <Ionicons name="repeat" size={20} color="#FFF" />
+              <Text style={styles.repostText}>Repost to followers</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -605,31 +648,19 @@ const handleCommentPress = async (videoId) => {
         barStyle="light-content"
       />
       
-      {/* Enhanced Feed Header */}
-      <EnhancedFeedHeader
-        activeTab={activeTab}
-        onChangeTab={handleTabChange}
-      />
-      
-      {/* Scroll Indicator */}
-      <FeedScrollIndicator
-        currentIndex={currentIndex}
-        totalVideos={videos.length}
-        scrollY={scrollY}
-        height={height * 0.3}
-      />
+     
       
       {/* Video List */}
       <FlatList
         ref={flatListRef}
         data={videos}
         renderItem={renderItem}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={height}
         snapToAlignment="start"
-        decelerationRate="fast"
+        decelerationRate="fast" // Use fast deceleration for snappier feel
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         onScroll={handleScroll}
@@ -640,16 +671,14 @@ const handleCommentPress = async (videoId) => {
             tintColor="#FE2C55"
             colors={["#FE2C55"]}
             progressBackgroundColor="#000"
-            progressViewOffset={insets.top + 50}
+            progressViewOffset={insets.top + 50} // Offset for header
           />
         }
-        onEndReached={loadMoreVideos}
-        onEndReachedThreshold={0.5}
-        removeClippedSubviews={Platform.OS === 'android'}
+        // Optimize FlatList performance
+        removeClippedSubviews={true}
         maxToRenderPerBatch={2}
         windowSize={3}
         initialNumToRender={1}
-        updateCellsBatchingPeriod={100}
         bounces={true}
         bouncesZoom={false}
       />
@@ -673,10 +702,55 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontWeight: '600',
   },
+  topTabsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tabButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    position: 'relative',
+  },
+  tabText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  inactiveTab: {},
+  inactiveTabText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '400',
+  },
+  activeTabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: '30%',
+    right: '30%',
+    height: 2,
+    backgroundColor: '#FFF',
+    borderRadius: 2,
+  },
+  tabIconButton: {
+    padding: 8,
+  },
   videoContainer: {
     width,
     height,
-    backgroundColor: '#000',
+  },
+  videoWrapper: {
+    flex: 1,
   },
   video: {
     flex: 1,
@@ -687,8 +761,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 100,
-    zIndex: 1,
+    height: 80,
   },
   gradientOverlay: {
     position: 'absolute',
@@ -700,72 +773,134 @@ const styles = StyleSheet.create({
   },
   userInfoContainer: {
     position: 'absolute',
-    bottom: 130,
+    bottom: 100,
     left: 16,
-    right: 80,
+    right: 90,
     zIndex: 10,
   },
   videoUsername: {
     color: '#FFF',
     fontWeight: 'bold',
     fontSize: 16,
-    marginBottom: 6,
+    marginBottom: 5,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
+  fireEmoji: {
+    fontSize: 16,
+  },
+  userHighlight: {
+    color: '#EEE',
+    fontWeight: '500',
+  },
+  locationText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginBottom: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1,
+  },
   soundInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  soundText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginLeft: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  repostBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginTop: 8,
+  },
+  repostText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginLeft: 8,
+    fontWeight: '500',
   },
   actionButtons: {
     position: 'absolute',
-    right: 12,
-    bottom: 130,
+    right: 10,
+    bottom: 120,
     alignItems: 'center',
     zIndex: 10,
   },
   actionButton: {
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  iconContainer: {
+  actionIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2,
   },
-  actionText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '500',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 1,
-  },
-  profileContainer: {
+  actionAvatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
     borderWidth: 2,
     borderColor: '#FFF',
-    marginBottom: 16, 
-    position: 'relative',
   },
-  profileImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  plusButtonSmall: {
+    position: 'absolute',
+    bottom: -4,
+    left: '50%',
+    marginLeft: -8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FE2C55',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1.5,
+  },
+  musicDiscContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#111',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 12,
+    borderColor: '#000',
+    overflow: 'hidden',
+  },
+  actionMusicDisc: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   followButton: {
     position: 'absolute',
     bottom: -8,
-    left: '50%',
-    marginLeft: -10,
+    left: 15,
     width: 20,
     height: 20,
     borderRadius: 10,
@@ -773,6 +908,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  username: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginBottom: 5,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  musicDisc: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginLeft: 4,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  musicDiscImage: {
+    width: 12,
+    height: 12,
+  },
+  userProfileImageContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#FFF',
+    position: 'relative',
+  },
+  userProfileImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  }
 });
 
 export default FeedScreen;

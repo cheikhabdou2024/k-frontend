@@ -11,25 +11,127 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Alert,
+  Image,
   Keyboard
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CommentItem from '../../components/feed/CommentItem';
 import { formatCount } from '../../utils/formatters';
-import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
-
-// Import API services
-import { videoService } from '../../services/api';
-import commentService from '../../services/commentService';
-import mockDataService from '../../services/mockDataService';
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
-const MODAL_HEIGHT = height * 0.7;
+const MODAL_HEIGHT = height * 0.7; // Modal takes 70% of screen height
 
-// (Removed misplaced navigation and API code block)
+const mockComments = [
+  {
+    id: '1',
+    content: 'This is amazing! 🔥',
+    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+    likes: 42,
+    isLiked: false,
+    user: {
+      id: 'u1',
+      username: 'johndoe',
+      avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
+    },
+    replies: [
+      {
+        id: '1.1',
+        content: 'Thanks! Glad you liked it 😊',
+        createdAt: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
+        likes: 12,
+        isLiked: false,
+        user: {
+          id: 'current_user',
+          username: 'current_user',
+          avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',
+        }
+      }
+    ]
+  },
+  {
+    id: '2',
+    content: 'Love your content! Keep it up 👏',
+    createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+    likes: 18,
+    isLiked: true,
+    user: {
+      id: 'u2',
+      username: 'sarahsmith',
+      avatarUrl: 'https://randomuser.me/api/portraits/women/32.jpg',
+    },
+    replies: []
+  },
+  // Keep the other comments as they are, but add empty replies array
+  {
+    id: '3',
+    content: 'Can you do a tutorial on this?',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+    likes: 7,
+    isLiked: false,
+    user: {
+      id: 'u3',
+      username: 'mikewilson',
+      avatarUrl: 'https://randomuser.me/api/portraits/men/51.jpg',
+    },
+    replies: [
+      {
+        id: '3.1',
+        content: 'I second this! Would love to see how it\'s done',
+        createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+        likes: 5,
+        isLiked: false,
+        user: {
+          id: 'u4',
+          username: 'emilyjones',
+          avatarUrl: 'https://randomuser.me/api/portraits/women/43.jpg',
+        }
+      },
+      {
+        id: '3.2',
+        content: 'Yes! tutorial please 🙏',
+        createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+        likes: 3,
+        isLiked: false,
+        user: {
+          id: 'u5',
+          username: 'alexthompson',
+          avatarUrl: 'https://randomuser.me/api/portraits/men/61.jpg',
+        }
+      }
+    ]
+  },
+  // Add empty replies arrays to the remaining comments
+  {
+    id: '4',
+    content: 'Just followed you! Check out my profile 🙌',
+    createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    likes: 3,
+    isLiked: false,
+    user: {
+      id: 'u4',
+      username: 'emilyjones',
+      avatarUrl: 'https://randomuser.me/api/portraits/women/43.jpg',
+    },
+    replies: []
+  },
+  {
+    id: '5',
+    content: 'The editing on this is so smooth! What app do you use?',
+    createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+    likes: 12,
+    isLiked: false,
+    user: {
+      id: 'u5',
+      username: 'alexthompson',
+      avatarUrl: 'https://randomuser.me/api/portraits/men/61.jpg',
+    },
+    replies: []
+  },
+];
 
 const CommentsScreen = ({ route, navigation }) => {
   const { videoId, onClose } = route.params || {};
@@ -38,28 +140,20 @@ const CommentsScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [replyTo, setReplyTo] = useState(null);
   const [showEmojis, setShowEmojis] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [posting, setPosting] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [audioCommentUri, setAudioCommentUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isAudioMode, setIsAudioMode] = useState(false);
-  const [commentCount, setCommentCount] = useState(0);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    hasMore: true
-  });
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [fetchingMoreComments, setFetchingMoreComments] = useState(false);
+  const [isPinned, setIsPinned] = useState({});
   
   const insets = useSafeAreaInsets();
   const inputRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(MODAL_HEIGHT)).current;
-  const flatListRef = useRef(null);
   const durationTimerRef = useRef(null);
+  const flatListRef = useRef(null);
   
   // Animate in when component mounts
   useEffect(() => {
@@ -93,103 +187,46 @@ const CommentsScreen = ({ route, navigation }) => {
     };
   }, []);
   
-  // Load comments and comment count when component mounts
+  // Load comments
   useEffect(() => {
-    if (videoId) {
-      fetchComments();
-      fetchCommentCount();
-    }
+    fetchComments();
   }, [videoId]);
   
-  // Fetch comments from API
-  const fetchComments = async (page = 1, isLoadMore = false) => {
-    try {
-      if (!isLoadMore) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-      
-      console.log(`Fetching comments for video ${videoId}, page ${page}`);
-      
-      // Use mock data service for now (replace with real API when ready)
-      const response = await mockDataService.getVideoComments(videoId, page, pagination.limit);
-      
-      if (response && response.comments) {
-        if (isLoadMore) {
-          setComments(prev => [...prev, ...response.comments]);
-        } else {
-          setComments(response.comments);
-        }
-        
-        setPagination(prev => ({
-          ...prev,
-          page,
-          hasMore: response.pagination.hasMore
-        }));
-      }
-      
-      // When ready to use real API, replace above with:
-      /*
-      const response = await commentService.getVideoComments(videoId, page, pagination.limit);
-      
-      if (response && response.comments) {
-        if (isLoadMore) {
-          setComments(prev => [...prev, ...response.comments]);
-        } else {
-          setComments(response.comments);
-        }
-        
-        setPagination(prev => ({
-          ...prev,
-          page,
-          hasMore: response.pagination.hasMore
-        }));
-      }
-      */
-      
-    } catch (error) {
-      console.error('Error loading comments:', error);
-      Alert.alert('Error', 'Failed to load comments. Please try again.');
-    } finally {
+  // Simulate API call to fetch comments
+  const fetchComments = () => {
+    setLoading(true);
+    // Simulate network delay
+    setTimeout(() => {
+      setComments(mockComments);
       setLoading(false);
-      setLoadingMore(false);
-      setRefreshing(false);
-    }
+    }, 1000);
   };
   
-  // Fetch comment count
-  const fetchCommentCount = async () => {
-    try {
-      // Use mock data service
-      const response = await mockDataService.getCommentCount(videoId);
-      if (response && typeof response.count === 'number') {
-        setCommentCount(response.count);
-      }
+  // Simulate fetching more comments when scrolling
+  const fetchMoreComments = () => {
+    if (fetchingMoreComments) return;
+    
+    setFetchingMoreComments(true);
+    // Simulate loading more comments
+    setTimeout(() => {
+      // Add more mock comments
+      const moreComments = Array(5).fill().map((_, i) => ({
+        id: `new_${Date.now()}_${i}`,
+        content: `This is a loaded comment #${i+1}`,
+        createdAt: new Date().toISOString(),
+        likes: Math.floor(Math.random() * 20),
+        isLiked: false,
+        user: {
+          id: `u${i+10}`,
+          username: `user${i+10}`,
+          avatarUrl: `https://randomuser.me/api/portraits/${i % 2 ? 'women' : 'men'}/${30 + i}.jpg`,
+        },
+        replies: []
+      }));
       
-      // When ready to use real API, replace above with:
-      /*
-      const response = await commentService.getCommentCount(videoId);
-      if (response && typeof response.count === 'number') {
-        setCommentCount(response.count);
-      }
-      */
-    } catch (error) {
-      console.error('Error fetching comment count:', error);
-    }
-  };
-  
-  // Load more comments
-  const loadMoreComments = () => {
-    if (!loadingMore && pagination.hasMore) {
-      fetchComments(pagination.page + 1, true);
-    }
-  };
-  
-  // Handle pull to refresh
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchComments(1, false);
+      setComments(prev => [...prev, ...moreComments]);
+      setFetchingMoreComments(false);
+    }, 1500);
   };
 
   // Handle closing the modal with animation
@@ -207,19 +244,23 @@ const CommentsScreen = ({ route, navigation }) => {
   // Start audio recording
   const startRecording = async () => {
     try {
+      // Request permissions
       const permissionResult = await Audio.requestPermissionsAsync();
       if (permissionResult.status !== 'granted') {
-        Alert.alert('Permission required', 'Please allow microphone access to record audio comments.');
+        alert('Permission to record audio denied');
         return;
       }
       
+      // Set audio mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
       
+      // Provide haptic feedback
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
+      // Start recording
       const recording = new Audio.Recording();
       await recording.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
       await recording.startAsync();
@@ -227,8 +268,10 @@ const CommentsScreen = ({ route, navigation }) => {
       setIsRecording(true);
       setRecordingDuration(0);
       
+      // Start timer for recording duration
       durationTimerRef.current = setInterval(() => {
         setRecordingDuration(prev => {
+          // Auto stop at 30 seconds
           if (prev >= 30) {
             stopRecording();
             return 30;
@@ -238,7 +281,6 @@ const CommentsScreen = ({ route, navigation }) => {
       }, 1000);
     } catch (error) {
       console.error('Failed to start recording', error);
-      Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   };
   
@@ -247,16 +289,20 @@ const CommentsScreen = ({ route, navigation }) => {
     try {
       if (!recording) return;
       
+      // Stop recording
       await recording.stopAndUnloadAsync();
       clearInterval(durationTimerRef.current);
       
+      // Provide haptic feedback
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
+      // Get recording URI
       const uri = recording.getURI();
       setAudioCommentUri(uri);
       setRecording(null);
       setIsRecording(false);
       
+      // Reset audio mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
       });
@@ -296,93 +342,93 @@ const CommentsScreen = ({ route, navigation }) => {
   };
   
   // Post audio comment
-  const postAudioComment = async () => {
+  const postAudioComment = () => {
     if (!audioCommentUri) return;
     
-    try {
-      setPosting(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Use mock data service
-      const newComment = await mockDataService.addAudioComment(
-        videoId, 
-        audioCommentUri, 
-        recordingDuration
-      );
-      
-      setComments([newComment, ...comments]);
-      setCommentCount(prev => prev + 1);
-      setAudioCommentUri(null);
-      
-      if (flatListRef.current) {
-        flatListRef.current.scrollToOffset({ offset: 0, animated: true });
-      }
-      
-      // When ready to use real API, replace above with:
-      /*
-      const response = await commentService.addComment(videoId, "🎤 Voice comment", authToken);
-      if (response) {
-        setComments([response, ...comments]);
-        setCommentCount(prev => prev + 1);
-        setAudioCommentUri(null);
-        
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
-        }
-      }
-      */
-    } catch (error) {
-      console.error('Error posting audio comment:', error);
-      Alert.alert('Error', 'Failed to post comment. Please try again.');
-    } finally {
-      setPosting(false);
+    // Provide haptic feedback
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    // Create new comment object with audio
+    const newCommentObj = {
+      id: `comment_${Date.now()}`,
+      content: "🎤 Voice comment",
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      isLiked: false,
+      isAudio: true,
+      audioUri: audioCommentUri,
+      user: {
+        id: 'current_user',
+        username: 'current_user',
+        avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',
+      },
+      replies: []
+    };
+    
+    // Add to comments list at the beginning
+    setComments([newCommentObj, ...comments]);
+    setAudioCommentUri(null);
+    
+    // Scroll to top to show new comment
+    if (flatListRef.current) {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: true });
     }
   };
   
   // Handle posting a text comment
-  const handlePostComment = async () => {
+  const handlePostComment = () => {
     if (isAudioMode && audioCommentUri) {
-      await postAudioComment();
+      postAudioComment();
       return;
     }
     
     if (!newComment.trim()) return;
     
-    try {
-      setPosting(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Provide haptic feedback
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    // Create new comment object
+    const newCommentObj = {
+      id: `comment_${Date.now()}`,
+      content: newComment,
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      isLiked: false,
+      user: {
+        id: 'current_user',
+        username: 'current_user',
+        avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',
+      },
+      replies: []
+    };
+    
+    // If replying to a comment, add as a reply instead
+    if (replyTo) {
+      setComments(prevComments => 
+        prevComments.map(comment => {
+          if (comment.id === replyTo.commentId) {
+            return {
+              ...comment,
+              replies: [...(comment.replies || []), newCommentObj]
+            };
+          }
+          return comment;
+        })
+      );
       
-      // Use mock data service
-      const addedComment = await mockDataService.addComment(videoId, newComment.trim());
+      // Scroll to make the comment visible
+      // In a real app, you'd implement a way to scroll to the specific comment
+    } else {
+      // Add to comments list at the beginning
+      setComments([newCommentObj, ...comments]);
       
-      setComments([addedComment, ...comments]);
-      setCommentCount(prev => prev + 1);
-      setNewComment('');
-      
+      // Scroll to top to show new comment
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: true });
       }
-      
-      // When ready to use real API, replace above with:
-      /*
-      const response = await commentService.addComment(videoId, newComment, authToken);
-      if (response) {
-        setComments([response, ...comments]);
-        setCommentCount(prev => prev + 1);
-        setNewComment('');
-        
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
-        }
-      }
-      */
-      
-    } catch (error) {
-      console.error('Error posting comment:', error);
-      Alert.alert('Error', 'Failed to post comment. Please try again.');
-    } finally {
-      setPosting(false);
     }
+    
+    setNewComment('');
     
     // Clear reply if any
     if (replyTo) {
@@ -391,50 +437,67 @@ const CommentsScreen = ({ route, navigation }) => {
   };
   
   // Handle like comment
-  const handleLikeComment = async (commentId) => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const handleLikeComment = (commentId, isReply = false, parentId = null) => {
+    // Provide haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    setComments(prevComments => 
+      prevComments.map(comment => {
+        // If this is a reply, find the parent comment
+        if (isReply && comment.id === parentId) {
+          return {
+            ...comment,
+            replies: comment.replies.map(reply => {
+              if (reply.id === commentId) {
+                return {
+                  ...reply,
+                  isLiked: !reply.isLiked,
+                  likes: reply.isLiked ? Math.max(0, reply.likes - 1) : reply.likes + 1
+                };
+              }
+              return reply;
+            })
+          };
+        }
+        
+        // If this is a main comment
+        if (!isReply && comment.id === commentId) {
+          return {
+            ...comment,
+            isLiked: !comment.isLiked,
+            likes: comment.isLiked ? Math.max(0, comment.likes - 1) : comment.likes + 1
+          };
+        }
+        return comment;
+      })
+    );
+  };
+  
+  // Toggle pin status for a comment
+  const handlePinComment = (commentId) => {
+    // In a real app, you would call an API to pin/unpin the comment
+    setIsPinned(prev => {
+      const newState = {...prev};
       
-      // Use mock data service
-      await mockDataService.toggleCommentLike(videoId, commentId);
+      // If a comment was already pinned, unpin it first
+      Object.keys(newState).forEach(key => {
+        if (newState[key] && key !== commentId) {
+          newState[key] = false;
+        }
+      });
       
-      // Update local state
-      setComments(prevComments => 
-        prevComments.map(comment => {
-          if (comment.id === commentId) {
-            return {
-              ...comment,
-              isLiked: !comment.isLiked,
-              likes: comment.isLiked ? Math.max(0, (comment.likes || 0) - 1) : (comment.likes || 0) + 1
-            };
-          }
-          // Check replies too
-          if (comment.replies) {
-            return {
-              ...comment,
-              replies: comment.replies.map(reply => {
-                if (reply.id === commentId) {
-                  return {
-                    ...reply,
-                    isLiked: !reply.isLiked,
-                    likes: reply.isLiked ? Math.max(0, (reply.likes || 0) - 1) : (reply.likes || 0) + 1
-                  };
-                }
-                return reply;
-              })
-            };
-          }
-          return comment;
-        })
-      );
-      
-      // When ready to use real API, replace above with:
-      /*
-      await commentService.toggleCommentLike(commentId, authToken);
-      // Then update local state as above
-      */
-    } catch (error) {
-      console.error('Error liking comment:', error);
+      // Toggle the current comment's pin status
+      newState[commentId] = !newState[commentId];
+      return newState;
+    });
+    
+    // Update the comments list to show the pinned comment at the top
+    if (!isPinned[commentId]) {
+      const commentToPin = comments.find(c => c.id === commentId);
+      if (commentToPin) {
+        const remainingComments = comments.filter(c => c.id !== commentId);
+        setComments([commentToPin, ...remainingComments]);
+      }
     }
   };
   
@@ -454,6 +517,7 @@ const CommentsScreen = ({ route, navigation }) => {
     setNewComment(`@${username} `);
     setIsAudioMode(false);
     
+    // Focus input
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -481,7 +545,7 @@ const CommentsScreen = ({ route, navigation }) => {
     <View style={styles.headerContainer}>
       <View style={styles.headerLine} />
       <Text style={styles.headerTitle}>
-        {formatCount(commentCount)} comments
+        {formatCount(comments.length)} comments
       </Text>
       <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
         <Ionicons name="close" size={24} color="#FFF" />
@@ -528,7 +592,17 @@ const CommentsScreen = ({ route, navigation }) => {
       {isRecording ? (
         <>
           <View style={styles.recordingIndicator}>
-            <Animated.View style={styles.recordingDot} />
+            <Animated.View 
+              style={[
+                styles.recordingDot,
+                {
+                  opacity: new Animated.Value(1).interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.3, 1],
+                  })
+                }
+              ]}
+            />
             <Text style={styles.recordingText}>
               Recording... {formatDuration(recordingDuration)}
             </Text>
@@ -570,9 +644,35 @@ const CommentsScreen = ({ route, navigation }) => {
     </View>
   );
   
+  // Render a pinned comment banner
+  const renderPinnedComment = () => {
+    const pinnedCommentId = Object.keys(isPinned).find(id => isPinned[id]);
+    if (!pinnedCommentId) return null;
+    
+    const pinnedComment = comments.find(c => c.id === pinnedCommentId);
+    if (!pinnedComment) return null;
+    
+    return (
+      <View style={styles.pinnedCommentContainer}>
+        <View style={styles.pinnedHeader}>
+          <Ionicons name="pin" size={16} color="#FE2C55" />
+          <Text style={styles.pinnedText}>Pinned comment</Text>
+        </View>
+        <CommentItem
+          comment={pinnedComment}
+          onLike={(id) => handleLikeComment(id)}
+          onReply={handleReply}
+          onUserPress={(userId) => console.log('Navigate to user profile:', userId)}
+          onPlayAudio={playAudioComment}
+          isPinned={true}
+        />
+      </View>
+    );
+  };
+  
   // Render footer (loading more indicator)
   const renderFooter = () => {
-    if (!loadingMore) return null;
+    if (!fetchingMoreComments) return null;
     
     return (
       <View style={styles.footerLoading}>
@@ -588,7 +688,7 @@ const CommentsScreen = ({ route, navigation }) => {
         styles.container, 
         { 
           paddingBottom: insets.bottom,
-          height: MODAL_HEIGHT + (keyboardVisible ? 100 : 0),
+          height: MODAL_HEIGHT + (keyboardVisible ? 200 : 0), // Expand when keyboard is visible
           transform: [{ translateY: slideAnim }]
         }
       ]}
@@ -601,6 +701,9 @@ const CommentsScreen = ({ route, navigation }) => {
         {/* Header */}
         {renderHeader()}
         
+        {/* Pinned comment */}
+        {renderPinnedComment()}
+        
         {/* Comments list */}
         <FlatList
           ref={flatListRef}
@@ -612,21 +715,16 @@ const CommentsScreen = ({ route, navigation }) => {
               onReply={handleReply}
               onUserPress={(userId) => console.log('Navigate to user profile:', userId)}
               onPlayAudio={playAudioComment}
+              onPin={(id) => handlePinComment(id)}
+              isPinned={isPinned[item.id]}
+              currentUserId="current_user" // To determine if user can pin/edit their comments
             />
           )}
-          keyExtractor={item => item.id.toString()}
+          keyExtractor={item => item.id}
           contentContainerStyle={styles.commentsList}
-          onEndReached={loadMoreComments}
+          onEndReached={fetchMoreComments} // Load more when reaching end
           onEndReachedThreshold={0.5}
           ListFooterComponent={renderFooter}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor="#FE2C55"
-              colors={["#FE2C55"]}
-            />
-          }
         />
         
         {/* Reply indicator */}
@@ -653,16 +751,12 @@ const CommentsScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={[
                 styles.postButton,
-                (!audioCommentUri || posting) && styles.postButtonDisabled
+                !audioCommentUri && styles.postButtonDisabled
               ]}
               onPress={postAudioComment}
-              disabled={!audioCommentUri || posting}
+              disabled={!audioCommentUri}
             >
-              {posting ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Text style={styles.postButtonText}>Post</Text>
-              )}
+              <Text style={styles.postButtonText}>Post</Text>
             </TouchableOpacity>
           ) : (
             <>
@@ -674,13 +768,11 @@ const CommentsScreen = ({ route, navigation }) => {
                 value={newComment}
                 onChangeText={setNewComment}
                 multiline
-                editable={!posting}
               />
               
               <TouchableOpacity 
                 style={styles.iconButton}
                 onPress={handleToggleEmojis}
-                disabled={posting}
               >
                 <Ionicons 
                   name="happy-outline" 
@@ -692,7 +784,6 @@ const CommentsScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={styles.iconButton}
                 onPress={toggleAudioMode}
-                disabled={posting}
               >
                 <Ionicons 
                   name="mic-outline" 
@@ -704,16 +795,12 @@ const CommentsScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={[
                   styles.postButton,
-                  (!newComment.trim() || posting) && styles.postButtonDisabled
+                  !newComment.trim() && styles.postButtonDisabled
                 ]}
                 onPress={handlePostComment}
-                disabled={!newComment.trim() || posting}
+                disabled={!newComment.trim()}
               >
-                {posting ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Text style={styles.postButtonText}>Post</Text>
-                )}
+                <Text style={styles.postButtonText}>Post</Text>
               </TouchableOpacity>
             </>
           )}
@@ -774,6 +861,24 @@ const styles = StyleSheet.create({
   },
   commentsList: {
     paddingBottom: 20,
+  },
+  pinnedCommentContainer: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#222',
+    backgroundColor: 'rgba(254, 44, 85, 0.05)',
+  },
+  pinnedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  pinnedText: {
+    fontSize: 12,
+    color: '#FE2C55',
+    marginLeft: 4,
+    fontWeight: '500',
   },
   replyContainer: {
     flexDirection: 'row',
@@ -900,36 +1005,155 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
-    paddingVertical: 8,
-  },
-  playAudioButton: {
+    padding: 12,
     backgroundColor: '#333',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+    borderRadius: 20,
+    marginBottom: 16,
   },
   audioWaveform: {
     flex: 1,
-    height: 40,
-    backgroundColor: '#333',
-    borderRadius: 20,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
+    height: 4,
+    backgroundColor: '#FE2C55',
+    borderRadius: 2,
+    marginHorizontal: 8,
   },
   audioPreviewText: {
     color: '#FFF',
-    fontSize: 14,
-  },
-  deleteAudioButton: {
-    width: 36,
-    height: 36,
+    fontSize: 12,
+  },  
+  playAudioButton: {
+    backgroundColor: '#FE2C55',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+  },
+  stopAudioButton: {
+    backgroundColor: '#FE2C55',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteAudioButton: {
+    backgroundColor: '#FE2C55',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  audioCommentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  audioCommentText: {
+    fontSize: 14,
+    color: '#FFF',
+    marginLeft: 6,
+  },
+  audioCommentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+  },
+  audioCommentActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  audioCommentActionText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIcon: {
+    width: 20,
+    height: 20,
+  },
+  audioCommentActionIconText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioCommentActionIconButtonText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 4,
+  },
+  audioCommentActionIconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
-
-export default CommentsScreen;
+export default CommentsScreen;   
