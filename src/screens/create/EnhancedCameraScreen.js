@@ -688,4 +688,7 @@ const styles = StyleSheet.create({
   },
 });
 
+// At the end of src/screens/create/EnhancedCameraScreen.js
+// Make sure this line exists at the very bottom of your file:
+
 export default EnhancedCameraScreen;
