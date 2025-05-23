@@ -1,4 +1,4 @@
-// src/screens/feed/FeedScreen.js - Final Refactored Version
+// src/screens/feed/FeedScreen.js - Final Integration Version
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
@@ -20,7 +20,7 @@ import FeedHeader, { FEED_TYPES } from '../../components/feed/FeedHeader';
 // Hooks
 import { useFeedLogic } from '../../hooks/useFeedLogic';
 
-// Services
+// Services - Updated to use real API
 import FeedService from '../../services/FeedService';
 
 // Utils
@@ -33,6 +33,7 @@ const FeedScreen = () => {
   const [videos, setVideos] = useState([]);
   const [hasMoreVideos, setHasMoreVideos] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [apiStatus, setApiStatus] = useState('loading'); // 'loading', 'api', 'mock'
   
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -81,38 +82,58 @@ const FeedScreen = () => {
     }
   }, [activeTab]);
 
-  // Load initial videos
+  // Load initial videos with API status tracking
   const loadInitialVideos = async () => {
     try {
       setLoading(true);
+      setApiStatus('loading');
+      console.log('📱 FeedScreen: Loading initial videos...');
+      
       const loadedVideos = await FeedService.loadVideos();
+      
+      // Check if we got real API data or mock data
+      const isApiData = loadedVideos.some(video => 
+        video.videoUrl && video.videoUrl.includes('pixabay')
+      );
+      
       setVideos(loadedVideos);
       setCurrentPage(1);
+      setApiStatus(isApiData ? 'api' : 'mock');
+      
+      console.log(`📱 FeedScreen: Loaded ${loadedVideos.length} videos from ${isApiData ? 'API' : 'mock'}`);
+      
     } catch (error) {
-      console.error('Error loading initial videos:', error);
+      console.error('📱 FeedScreen: Error loading initial videos:', error);
+      setApiStatus('mock');
     } finally {
       setLoading(false);
     }
   };
 
-  // Load videos by tab
+  // Load videos by tab with API status tracking
   const loadVideosByTab = async (feedType) => {
     try {
+      console.log(`📱 FeedScreen: Loading ${feedType} videos...`);
+      
       const { videos: loadedVideos, hasMore } = await FeedService.loadVideosByFeedType(
         feedType.toLowerCase(), 
         1, 
         10
       );
+      
       setVideos(loadedVideos);
       setHasMoreVideos(hasMore);
       setCurrentPage(1);
       
       // Reset to first video
-      if (flatListRef.current) {
+      if (flatListRef.current && loadedVideos.length > 0) {
         flatListRef.current.scrollToIndex({ index: 0, animated: true });
       }
+      
+      console.log(`📱 FeedScreen: Loaded ${loadedVideos.length} ${feedType} videos`);
+      
     } catch (error) {
-      console.error('Error loading videos by tab:', error);
+      console.error(`📱 FeedScreen: Error loading ${feedType} videos:`, error);
     }
   };
 
@@ -120,17 +141,22 @@ const FeedScreen = () => {
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
+      console.log('📱 FeedScreen: Refreshing videos...');
+      
       const loadedVideos = await FeedService.loadVideos(true);
       setVideos(loadedVideos);
       setCurrentPage(1);
       setHasMoreVideos(true);
       
       // Reset to first video
-      if (flatListRef.current) {
+      if (flatListRef.current && loadedVideos.length > 0) {
         flatListRef.current.scrollToIndex({ index: 0, animated: true });
       }
+      
+      console.log(`📱 FeedScreen: Refreshed with ${loadedVideos.length} videos`);
+      
     } catch (error) {
-      console.error('Error refreshing videos:', error);
+      console.error('📱 FeedScreen: Error refreshing videos:', error);
     } finally {
       setRefreshing(false);
     }
@@ -138,12 +164,15 @@ const FeedScreen = () => {
 
   // Handle tab change
   const handleTabChange = (tab) => {
+    console.log(`📱 FeedScreen: Tab changed to ${tab}`);
     setActiveTab(tab);
   };
 
   // Handle like video with API call
   const handleLikeVideoWithAPI = async (videoId, doubleTap = false) => {
     try {
+      console.log(`📱 FeedScreen: Liking video ${videoId}`);
+      
       // Optimistically update UI
       setVideos(prevVideos => 
         prevVideos.map(video => {
@@ -168,9 +197,10 @@ const FeedScreen = () => {
       const video = videos.find(v => v.id === videoId);
       if (video) {
         await FeedService.toggleVideoLike(videoId, video.isLiked);
+        console.log(`✅ Successfully liked video ${videoId}`);
       }
     } catch (error) {
-      console.error('Error liking video:', error);
+      console.error('❌ Error liking video:', error);
       // Revert optimistic update on error
       setVideos(prevVideos => 
         prevVideos.map(video => {
@@ -194,6 +224,8 @@ const FeedScreen = () => {
     if (!hasMoreVideos || loading || refreshing) return;
     
     try {
+      console.log('📱 FeedScreen: Loading more videos...');
+      
       const nextPage = currentPage + 1;
       const { videos: moreVideos, hasMore } = await FeedService.loadVideosByFeedType(
         activeTab.toLowerCase(),
@@ -204,14 +236,19 @@ const FeedScreen = () => {
       setVideos(prevVideos => [...prevVideos, ...moreVideos]);
       setHasMoreVideos(hasMore);
       setCurrentPage(nextPage);
+      
+      console.log(`📱 FeedScreen: Loaded ${moreVideos.length} more videos`);
+      
     } catch (error) {
-      console.error('Error loading more videos:', error);
+      console.error('📱 FeedScreen: Error loading more videos:', error);
     }
   };
 
   // Enhanced bookmark handler with API
   const handleBookmarkWithAPI = async (videoId) => {
     try {
+      console.log(`📱 FeedScreen: Bookmarking video ${videoId}`);
+      
       const currentStatus = bookmark[videoId] || false;
       
       // Optimistically update UI
@@ -219,8 +256,10 @@ const FeedScreen = () => {
       
       // Make API call
       await FeedService.toggleBookmark(videoId, currentStatus);
+      console.log(`✅ Successfully bookmarked video ${videoId}`);
+      
     } catch (error) {
-      console.error('Error bookmarking video:', error);
+      console.error('❌ Error bookmarking video:', error);
       // Revert on error
       handleBookmarkPress(videoId);
     }
@@ -229,13 +268,15 @@ const FeedScreen = () => {
   // Enhanced share handler with API
   const handleShareWithAPI = async (videoId) => {
     try {
+      console.log(`📱 FeedScreen: Sharing video ${videoId}`);
+      
       const result = await FeedService.shareVideo(videoId);
       if (result.success) {
-        // Show share sheet or copy link to clipboard
-        console.log('Share URL:', result.shareUrl);
+        console.log('✅ Share URL:', result.shareUrl);
+        // Here you could show a share sheet or copy to clipboard
       }
     } catch (error) {
-      console.error('Error sharing video:', error);
+      console.error('❌ Error sharing video:', error);
     }
   };
 
@@ -281,11 +322,23 @@ const FeedScreen = () => {
     );
   };
 
+  // Render loading state with API status
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#FE2C55" />
-        <Text style={styles.loadingText}>Loading awesome videos...</Text>
+        <Text style={styles.loadingText}>
+          {apiStatus === 'loading' 
+            ? 'Connecting to API...' 
+            : 'Loading awesome videos...'
+          }
+        </Text>
+        {apiStatus === 'api' && (
+          <Text style={styles.apiStatusText}>✅ Connected to API</Text>
+        )}
+        {apiStatus === 'mock' && (
+          <Text style={styles.mockStatusText}>⚠️ Using offline content</Text>
+        )}
       </View>
     );
   }
@@ -297,6 +350,13 @@ const FeedScreen = () => {
         backgroundColor="transparent"
         barStyle="light-content"
       />
+      
+      {/* Status indicator */}
+      {apiStatus === 'api' && (
+        <View style={styles.apiIndicator}>
+          <Text style={styles.apiIndicatorText}>🔗 Live API</Text>
+        </View>
+      )}
       
       {/* Video List */}
       <FlatList
@@ -356,6 +416,32 @@ const styles = StyleSheet.create({
     color: '#FFF',
     marginTop: 20,
     fontWeight: '600',
+    fontSize: 16,
+  },
+  apiStatusText: {
+    color: '#4CAF50',
+    marginTop: 8,
+    fontSize: 14,
+  },
+  mockStatusText: {
+    color: '#FF9800',
+    marginTop: 8,
+    fontSize: 14,
+  },
+  apiIndicator: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: 'rgba(76, 175, 80, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1000,
+  },
+  apiIndicatorText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   loadingFooter: {
     paddingVertical: 20,

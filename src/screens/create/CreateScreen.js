@@ -21,18 +21,20 @@ const CreateScreen = () => {
   
   // Handle camera button press
   const handleCameraPress = () => {
+    console.log('📸 Opening camera...');
     navigation.navigate('CameraScreen');
   };
   
   // Handle gallery button press
   const handleGalleryPress = () => {
+    console.log('📱 Opening gallery...');
     navigation.navigate('GalleryPickerScreen');
   };
   
   // Handle templates button press (for future implementation)
   const handleTemplatesPress = () => {
+    console.log('📋 Templates pressed');
     // To be implemented in future sprints
-    console.log('Templates pressed');
   };
   
   return (
@@ -50,7 +52,7 @@ const CreateScreen = () => {
         
         <Text style={styles.headerTitle}>Create</Text>
         
-        <View style={styles.closeButton} /> {/* Empty view for layout balance */}
+        <View style={styles.closeButton} /> 
       </View>
       
       {/* Content */}

@@ -1,7 +1,7 @@
-// src/components/feed/VideoItem.js
+// src/components/feed/VideoItem.js - Updated with Adaptive Video
 import React, { useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { Video } from 'expo-av';
+import SimpleAdaptiveVideo from '../video/SimpleAdaptiveVideo'; // Using the simple version
 import FeedHeader from './FeedHeader';
 import VideoOverlays from './VideoOverlays';
 import VideoActionButtons from './VideoActionButton';
@@ -41,6 +41,37 @@ const VideoItem = ({
   const isHeartAnimationVisible = showHeartAnimation[item.id] || false;
   const isBookmarked = bookmark[item.id] || false;
 
+  // Enhanced video load handler
+  const handleVideoLoad = (status) => {
+    console.log(`📹 Video ${item.id} loaded:`, {
+      duration: status.durationMillis,
+      dimensions: status.naturalSize,
+      isLoaded: status.isLoaded
+    });
+    
+    if (onVideoLoad) {
+      onVideoLoad(item.id);
+    }
+  };
+
+  // Enhanced video load start handler
+  const handleVideoLoadStart = () => {
+    console.log(`📹 Video ${item.id} started loading...`);
+    
+    if (onVideoLoadStart) {
+      onVideoLoadStart(item.id);
+    }
+  };
+
+  // Enhanced video error handler
+  const handleVideoError = (error) => {
+    console.error(`❌ Video ${item.id} failed to load:`, error);
+    
+    if (onVideoError) {
+      onVideoError(item.id, error);
+    }
+  };
+
   return (
     <View style={styles.videoContainer}>
       <TouchableOpacity
@@ -48,22 +79,22 @@ const VideoItem = ({
         style={styles.videoWrapper}
         onPress={() => onVideoTap(item.id)}
       >
-        <Video
-          ref={ref => { videoRefs.current[item.id] = ref; }}
+        {/* Adaptive Video Container */}
+        <SimpleAdaptiveVideo                         
+          videoRef={(ref) => { videoRefs.current[item.id] = ref; }}
           source={{ uri: item.videoUrl }}
-          style={styles.video}
-          resizeMode="cover"
           shouldPlay={isActive}
-          isLooping
-          useNativeControls={false}
-          onLoadStart={() => onVideoLoadStart(item.id)}
-          onLoad={() => onVideoLoad(item.id)}
-          onError={(error) => onVideoError(item.id, error)}
+          isLooping={true}
+          fillMode="smart" // 'smart', 'cover', 'fit'
+          onLoadStart={handleVideoLoadStart}
+          onLoad={handleVideoLoad}
+          onError={handleVideoError} 
           rate={1.0}
           volume={1.0}
           onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
         />
         
+        {/* Video Overlays */}
         <VideoOverlays
           isVideoLoading={isVideoLoading}
           showPlayPauseIndicator={showPlayPauseIndicator}
@@ -75,7 +106,7 @@ const VideoItem = ({
           videoId={item.id}
         />
         
-        {/* Top navigation */}
+        {/* Top navigation - only show on first video or when scrolling */}
         <FeedHeader 
           activeTab={activeTab}
           onTabChange={onTabChange}
@@ -110,10 +141,6 @@ const styles = StyleSheet.create({
   },
   videoWrapper: {
     flex: 1,
-  },
-  video: {
-    flex: 1,
-    backgroundColor: '#000',
   },
 });
 

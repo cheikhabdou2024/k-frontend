@@ -97,4 +97,76 @@ export const getOptimalVideoQuality = () => {
   };
 };
 
+
+/**
+ * Determine optimal video resize mode based on aspect ratios
+ */
+export const getOptimalResizeMode = (videoWidth, videoHeight, screenWidth, screenHeight) => {
+  if (!videoWidth || !videoHeight) return 'cover';
+  
+  const videoAspectRatio = videoWidth / videoHeight;
+  const screenAspectRatio = screenWidth / screenHeight;
+  const ratioDifference = Math.abs(videoAspectRatio - screenAspectRatio);
+  
+  // Thresholds for different handling
+  const SIMILAR_RATIO_THRESHOLD = 0.3;
+  const EXTREME_RATIO_THRESHOLD = 1.0;
+  
+  if (ratioDifference < SIMILAR_RATIO_THRESHOLD) {
+    return 'cover'; // Similar ratios - just fill
+  } else if (ratioDifference > EXTREME_RATIO_THRESHOLD) {
+    return 'smart'; // Very different - smart handling with background
+  } else {
+    return 'fit'; // Moderate difference - fit with letterboxing
+  }
+};
+
+/**
+ * Check if video needs background treatment
+ */
+export const needsBackgroundTreatment = (videoWidth, videoHeight, screenWidth, screenHeight) => {
+  const videoAspectRatio = videoWidth / videoHeight;
+  const screenAspectRatio = screenWidth / screenHeight;
+  const ratioDifference = Math.abs(videoAspectRatio - screenAspectRatio);
+  
+  return ratioDifference > 0.4; // Show background if ratios are significantly different
+};
+
+
+/**
+ * Get video category based on aspect ratio
+ */
+export const getVideoCategory = (videoWidth, videoHeight) => {
+  if (!videoWidth || !videoHeight) return 'unknown';
+  
+  const aspectRatio = videoWidth / videoHeight;
+  
+  if (aspectRatio < 0.6) {
+    return 'vertical'; // 9:16, 3:4 etc
+  } else if (aspectRatio < 1.3) {
+    return 'square'; // 1:1, 4:3 etc
+  } else if (aspectRatio < 2.0) {
+    return 'landscape'; // 16:9, 3:2 etc
+  } else {
+    return 'widescreen'; // 21:9, cinematic etc
+  }
+};
+
+ 
+/**
+ * Log video info for debugging
+ */
+export const logVideoInfo = (videoWidth, videoHeight, screenWidth, screenHeight) => {
+  const category = getVideoCategory(videoWidth, videoHeight);
+  const resizeMode = getOptimalResizeMode(videoWidth, videoHeight, screenWidth, screenHeight);
+  const needsBg = needsBackgroundTreatment(videoWidth, videoHeight, screenWidth, screenHeight);
+  
+  console.log(`📹 Video Analysis:`, {
+    dimensions: `${videoWidth}x${videoHeight}`,
+    aspectRatio: (videoWidth / videoHeight).toFixed(2),
+    category,
+    resizeMode,
+    needsBackground: needsBg
+  });
+};
 // ===========================================

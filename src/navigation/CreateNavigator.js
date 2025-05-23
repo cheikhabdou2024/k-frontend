@@ -3,8 +3,11 @@ import { createStackNavigator } from '@react-navigation/stack';
 
 // Import create screens
 import CreateScreen from '../screens/create/CreateScreen';
-import CameraScreen from '../screens/create/CameraScreen';
-import GalleryPickerScreen from '../screens/create/GalleryPickerScreen';
+import CameraScreen from '../screens/create/EnhancedCameraScreen';
+import GalleryPickerScreen from '../screens/create/EnhancedGalleryPickerScreen';
+import VideoPreviewScreen from '../screens/create/VideoPreviewScreen';
+import EnhancedCameraScreen from '../screens/create/EnhancedCameraScreen';
+import EnhancedGalleryPickerScreen from '../screens/create/EnhancedGalleryPickerScreen';
 
 // Create a stack navigator for the create flow
 const CreateStack = createStackNavigator();
@@ -24,12 +27,19 @@ const CreateNavigator = () => {
       <CreateStack.Screen name="CreateHome" component={CreateScreen} />
       <CreateStack.Screen 
         name="CameraScreen" 
-        component={CameraScreen}
+        component={EnhancedCameraScreen}
         options={{
           gestureEnabled: false, // Disable swipe gesture to go back
         }}
       />
-      <CreateStack.Screen name="GalleryPickerScreen" component={GalleryPickerScreen} />
+      <CreateStack.Screen name="GalleryPickerScreen" component={EnhancedGalleryPickerScreen} />
+      <CreateStack.Screen 
+        name="VideoPreview" 
+        component={VideoPreviewScreen}
+        options={{
+          gestureEnabled: false, // Disable swipe gesture during editing
+        }}
+      />
     </CreateStack.Navigator>
   );
 };
