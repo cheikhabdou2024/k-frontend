@@ -20,6 +20,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import SimpleAdaptiveVideo from '../../components/video/SimpleAdaptiveVideo';
 import apiService from '../../services/apiService';
+import videoUploadService from '../../services/uploadService';
+
 
 const { width, height } = Dimensions.get('window');
 
@@ -93,97 +95,92 @@ const VideoPreviewScreen = () => {
   };
   
   // Handle post/upload video
-  const handlePostVideo = async () => {
-    if (!caption.trim()) {
-      Alert.alert('Caption Required', 'Please add a caption for your video.');
-      return;
-    }
+const handlePostVideo = async () => {
+  if (!caption.trim()) {
+    Alert.alert('Caption Required', 'Please add a caption for your video.');
+    return;
+  }
+  
+  try {
+    setIsUploading(true);
+    setUploadProgress(0);
     
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      
-      console.log('📤 Starting video upload...');
-      
-      // Haptic feedback
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
+    console.log('📤 Starting real video upload...');
+    
+    // Haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Prepare video metadata
+    const videoMetadata = {
+      title: caption.split('\n')[0] || 'Untitled Video',
+      description: caption,
+      duration: duration ? Math.floor(duration / 1000) : 0, // Convert to seconds
+      width: videoInfo.width,
+      height: videoInfo.height,
+      hashtags: extractHashtags(caption + ' ' + hashtags),
+      isPrivate: isPrivate,
+      filter: filter?.id || 'normal',
+    };
+    
+    console.log('📋 Video metadata:', videoMetadata);
+    
+    // Upload video to backend
+    const uploadResult = await videoUploadService.uploadVideo(
+      videoUri,
+      videoMetadata,
+      (progress) => {
+        // Update progress
+        setUploadProgress(progress.percentage);
+        console.log(`📊 Upload progress: ${progress.percentage}%`);
+      }
+    );
+    
+    console.log('✅ Upload complete:', uploadResult);
+    
+    // Success feedback
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    Alert.alert(
+      'Video Posted! 🎉',
+      'Your video has been uploaded successfully!',
+      [
+        {
+          text: 'View Feed',
+          onPress: () => {
+            // Navigate to home and refresh feed
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Main' }],
+            });
           }
-          return prev + Math.random() * 10;
-        });
-      }, 200);
-      
-      // Prepare video data
-      const videoData = {
-        title: caption.split('\n')[0] || 'Untitled Video', // First line as title
-        description: caption,
-        url: videoUri, // In a real app, you'd upload to cloud storage first
-        thumbnail: videoInfo.thumbnail || null,
-        duration: duration,
-        hashtags: extractHashtags(caption + ' ' + hashtags),
-        isPrivate: isPrivate,
-        filter: filter?.id || 'normal',
-        videoInfo: {
-          width: videoInfo.width,
-          height: videoInfo.height,
-          aspectRatio: videoInfo.width && videoInfo.height ? 
-                       (videoInfo.width / videoInfo.height).toFixed(2) : null,
-          source: isFromGallery ? 'gallery' : 'camera',
-          segments: segments.length || 1
         }
-      };
-      
-      console.log('📤 Video data prepared:', videoData);
-      
-      // In a real app, you would:
-      // 1. Upload video file to cloud storage (AWS S3, etc.)
-      // 2. Generate thumbnail
-      // 3. Process video (compression, filters, etc.)
-      // 4. Save metadata to database
-      
-      // For now, simulate the API call
-      await simulateVideoUpload(videoData);
-      
-      setUploadProgress(100);
-      clearInterval(progressInterval);
-      
-      // Success feedback
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      Alert.alert(
-        'Video Posted! 🎉',
-        'Your video has been uploaded successfully and will appear in the feed.',
-        [
-          {
-            text: 'View Feed',
-            onPress: () => {
-              navigation.navigate('Home');
-            }
-          }
-        ]
-      );
-      
-    } catch (error) {
-      console.error('❌ Video upload failed:', error);
-      setUploadProgress(0);
-      
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      
-      Alert.alert(
-        'Upload Failed',
-        'Failed to upload your video. Please try again.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
+      ]
+    );
+    
+  } catch (error) {
+    console.error('❌ Video upload failed:', error);
+    setUploadProgress(0);
+    
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    
+    Alert.alert(
+      'Upload Failed',
+      error.message || 'Failed to upload your video. Please try again.',
+      [
+        { 
+          text: 'Retry', 
+          onPress: () => handlePostVideo() 
+        },
+        { 
+          text: 'Cancel', 
+          style: 'cancel' 
+        }
+      ]
+    );
+  } finally {
+    setIsUploading(false);
+  }
+};
   
   // Simulate video upload to backend
   const simulateVideoUpload = async (videoData) => {

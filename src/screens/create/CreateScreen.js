@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React , { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -12,12 +12,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import UploadTestComponent from '../../components/debug/UploadTestComponent';
+
 
 const { width, height } = Dimensions.get('window');
+
+
 
 const CreateScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const [showUploadTest, setShowUploadTest] = useState(false);
+
   
   // Handle camera button press
   const handleCameraPress = () => {
@@ -100,7 +106,33 @@ const CreateScreen = () => {
             </View>
           </TouchableOpacity>
         </View>
-        
+
+
+
+
+
+
+
+
+        {/* Test Upload Button - Remove this in production */}
+<TouchableOpacity 
+  style={styles.mainButton}
+  onPress={() => setShowUploadTest(true)}
+  activeOpacity={0.8}
+>
+  <View style={[styles.buttonContent, { backgroundColor: '#FF6B6B' }]}>
+    <Ionicons name="bug" size={40} color="#FFF" />
+    <Text style={styles.buttonText}>Test Upload</Text>
+  </View>
+</TouchableOpacity>
+
+
+
+
+
+
+
+
         {/* Instructions */}
         <View style={styles.instructionsContainer}>
           <Text style={styles.instructionTitle}>Create your video</Text>
@@ -127,9 +159,23 @@ const CreateScreen = () => {
           ))}
         </View>
       </View>
+      {showUploadTest && (
+  <View style={StyleSheet.absoluteFillObject}>
+    <View style={styles.testContainer}>
+      <TouchableOpacity 
+        style={styles.closeTestButton}
+        onPress={() => setShowUploadTest(false)}
+      >
+        <Ionicons name="close" size={28} color="#FFF" />
+      </TouchableOpacity>
+      <UploadTestComponent />
     </View>
-  );
-};
+  </View>
+)}
+
+  </View>
+)}
+
 
 const styles = StyleSheet.create({
   container: {
@@ -210,6 +256,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 20,
   },
+  testContainer: {
+  flex: 1,
+  backgroundColor: '#000',
+  paddingTop: 50,
+},
+closeTestButton: {
+  position: 'absolute',
+  top: 50,
+  right: 20,
+  zIndex: 10,
+  padding: 8,
+},
   demoTitle: {
     color: '#FFF',
     fontSize: 18,
