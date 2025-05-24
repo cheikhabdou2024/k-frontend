@@ -44,33 +44,90 @@ class FeedService {
   }
 
   /**
-   * Transform API video data to frontend format
+   * Transform API video data to frontend format with enhanced URL handling
    */
   static transformApiVideos(apiVideos) {
-    return apiVideos.map(video => ({
-      id: video.id.toString(),
-      videoUrl: video.url,
-      thumbnailUrl: video.thumbnail || `https://picsum.photos/id/${200 + video.id}/300/400`,
-      caption: video.description || video.title || 'Amazing video! 🔥',
-      sound: { 
-        id: `s${video.id}`, 
-        name: 'Original Sound' 
-      },
-      likes: video.likeCount || Math.floor(Math.random() * 10000),
-      comments: video.commentCount || Math.floor(Math.random() * 500),
-      shares: Math.floor(Math.random() * 200),
-      isLiked: video.likedByMe || false,
-      location: null,
-      views: video.views || 0,
-      user: {
-        id: video.author?.id?.toString() || `u${video.id}`,
-        username: video.author?.username || `user${video.id}`,
-        avatarUrl: video.author?.avatar === 'default-avatar.png' 
-          ? `https://randomuser.me/api/portraits/${video.id % 2 ? 'women' : 'men'}/${(video.id % 50) + 1}.jpg`
-          : video.author?.avatar || `https://randomuser.me/api/portraits/men/${video.id % 50}.jpg`,
-        isVerified: Math.random() > 0.8, // 20% chance of verification
-      }
-    }));
+    return apiVideos.map(video => {
+      // Clean and format the video URL
+      const videoUrl = this.sanitizeVideoUrl(video.url);
+      
+      return {
+        id: video.id.toString(),
+        videoUrl,
+        thumbnailUrl: video.thumbnail || `https://picsum.photos/id/${200 + parseInt(video.id)}/300/400`,
+        caption: video.description || video.title || 'Amazing video! 🔥',
+        sound: { 
+          id: `s${video.id}`, 
+          name: video.soundName || 'Original Sound' 
+        },
+        likes: video.likeCount || Math.floor(Math.random() * 10000),
+        comments: video.commentCount || Math.floor(Math.random() * 500),
+        shares: Math.floor(Math.random() * 200),
+        isLiked: video.likedByMe || false,
+        location: video.location || null,
+        views: video.views || 0,
+        user: {
+          id: video.author?.id?.toString() || video.userId?.toString() || `u${video.id}`,
+          username: video.author?.username || `user${video.id}`,
+          avatarUrl: video.author?.avatar === 'default-avatar.png' 
+            ? `https://randomuser.me/api/portraits/${video.id % 2 ? 'women' : 'men'}/${(parseInt(video.id) % 50) + 1}.jpg`
+            : video.author?.avatar || `https://randomuser.me/api/portraits/men/${video.id % 50}.jpg`,
+          isVerified: Math.random() > 0.8, // 20% chance of verification
+        }
+      };
+    });
+  }
+
+  /**
+   * Sanitize and validate video URLs
+   */
+  static sanitizeVideoUrl(url) {
+    if (!url) return '';
+
+    // Trim the URL
+    let cleanUrl = url.trim();
+    
+    // Add http:// prefix if missing
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `http://${cleanUrl}`;
+    }
+    
+    // Format MinIO URLs correctly
+    if (cleanUrl.includes('minio') || cleanUrl.includes('localhost')) {
+      // Replace any double slashes (except after protocol)
+      cleanUrl = cleanUrl.replace(/(https?:\/\/)|(\/\/)/g, (match, protocol) => {
+        return protocol || '/';
+      });
+      
+      // Make sure there are no missing slashes between segments
+      cleanUrl = cleanUrl.replace(/([^:])\/+/g, '$1/');
+    }
+    
+    // Fallback to mock videos if URL seems problematic
+    if (!this.isValidVideoUrl(cleanUrl)) {
+      console.warn('⚠️ Invalid video URL detected:', cleanUrl);
+      const fallbackIndex = parseInt(Math.random() * mockVideos.length);
+      return mockVideos[fallbackIndex]?.videoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-waves-in-the-water-1164-large.mp4';
+    }
+    
+    return cleanUrl;
+  }
+  
+  /**
+   * Check if a URL is likely to be a valid video
+   */
+  static isValidVideoUrl(url) {
+    if (!url) return false;
+    
+    // Check if URL has video-like extensions
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp', '.flv'];
+    const hasVideoExtension = videoExtensions.some(ext => url.toLowerCase().includes(ext));
+    
+    // Check if URL includes common video hosts
+    const videoHosts = ['videos', 'video', 'media', 'assets.mixkit.co', 'pixabay', 'cdn', 'storage'];
+    const hasVideoHost = videoHosts.some(host => url.toLowerCase().includes(host));
+    
+    return hasVideoExtension || hasVideoHost;
   }
 
   /**

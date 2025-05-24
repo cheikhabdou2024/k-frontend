@@ -1,14 +1,10 @@
 // src/components/video/SimpleAdaptiveVideo.js
-import React, { useState } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, StyleSheet, Dimensions, ActivityIndicator, Text } from 'react-native';
 import { Video } from 'expo-av';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-/**
- * Simple adaptive video container that handles any resolution
- * TikTok-style without external dependencies
- */
 const SimpleAdaptiveVideo = ({
   source,
   shouldPlay,
@@ -19,141 +15,125 @@ const SimpleAdaptiveVideo = ({
   onError,
   onPlaybackStatusUpdate,
   videoRef,
-  fillMode = 'smart', // 'smart', 'cover', 'fit'
+  fillMode = 'smart',
   ...videoProps
 }) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
   const [videoStyle, setVideoStyle] = useState(styles.defaultVideo);
-  const [backgroundStyle, setBackgroundStyle] = useState(null);
 
-  /**
-   * Calculate optimal video sizing
-   */
-  const calculateVideoLayout = (videoWidth, videoHeight) => {
-    if (!videoWidth || !videoHeight) return;
+  // Enhanced error handler
+  const handleError = useCallback((error) => {
+    console.error(`Video error for ${source?.uri}:`, error);
+    setHasError(true);
+    setIsLoading(false);
+    if (onError) onError(error);
+  }, [source, onError]);
 
-    const videoAspectRatio = videoWidth / videoHeight;
-    const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
+  // Enhanced load start handler
+  const handleLoadStart = useCallback(() => {
+    setIsLoading(true);
+    setHasError(false);
+    if (onLoadStart) onLoadStart();
+  }, [onLoadStart]);
 
-    let mainVideoStyle = {};
-    let bgVideoStyle = null;
-
-    switch (fillMode) {
-      case 'cover':
-        // Fill screen completely (TikTok default for most videos)
-        mainVideoStyle = {
-          width: SCREEN_WIDTH,
-          height: SCREEN_HEIGHT,
-        };
-        break;
-
-      case 'fit':
-        // Fit entire video with black bars if needed
-        if (videoAspectRatio > screenAspectRatio) {
-          // Video is wider
-          mainVideoStyle = {
-            width: SCREEN_WIDTH,
-            height: SCREEN_WIDTH / videoAspectRatio,
-          };
-        } else {
-          // Video is taller or same ratio
-          mainVideoStyle = {
-            height: SCREEN_HEIGHT,
-            width: SCREEN_HEIGHT * videoAspectRatio,
-          };
-        }
-        break;
-
-      case 'smart':
-      default:
-        // Smart mode: fill screen but show background for very different ratios
-        const ratioThreshold = 0.3; // How different ratios can be before showing background
-        const ratioDifference = Math.abs(videoAspectRatio - screenAspectRatio);
-        
-        if (ratioDifference < ratioThreshold) {
-          // Similar aspect ratios - just fill the screen
-          mainVideoStyle = {
+  // Enhanced load complete handler
+  const handleLoad = useCallback((status) => {
+    setIsLoading(false);
+    
+    // Calculate video dimensions
+    if (status.naturalSize) {
+      const { width: videoWidth, height: videoHeight } = status.naturalSize;
+      
+      const videoAspectRatio = videoWidth / videoHeight;
+      const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
+      
+      let newStyle = {};
+      
+      // Apply different sizing based on fillMode and aspect ratios
+      switch (fillMode) {
+        case 'cover':
+          newStyle = {
             width: SCREEN_WIDTH,
             height: SCREEN_HEIGHT,
           };
-        } else {
-          // Very different aspect ratios - use smart sizing
+          break;
+        case 'fit':
+          if (videoAspectRatio > screenAspectRatio) {
+            newStyle = {
+              width: SCREEN_WIDTH,
+              height: SCREEN_WIDTH / videoAspectRatio,
+            };
+          } else {
+            newStyle = {
+              height: SCREEN_HEIGHT,
+              width: SCREEN_HEIGHT * videoAspectRatio,
+            };
+          }
+          break;
+        case 'smart':
+        default:
           const scale = Math.max(
             SCREEN_WIDTH / videoWidth,
             SCREEN_HEIGHT / videoHeight
           );
           
-          const scaledWidth = videoWidth * scale;
-          const scaledHeight = videoHeight * scale;
-          
-          mainVideoStyle = {
-            width: scaledWidth,
-            height: scaledHeight,
+          newStyle = {
+            width: videoWidth * scale,
+            height: videoHeight * scale,
           };
-
-          // Create a background video that covers the screen
-          bgVideoStyle = {
-            position: 'absolute',
-            width: SCREEN_WIDTH,
-            height: SCREEN_HEIGHT,
-            opacity: 0.3, // Dimmed background
-          };
-        }
-        break;
-    }
-
-    setVideoStyle(mainVideoStyle);
-    setBackgroundStyle(bgVideoStyle);
-  };
-
-  /**
-   * Handle video load and calculate dimensions
-   */
-  const handleVideoLoad = (status) => {
-    if (status.naturalSize) {
-      const { width: videoWidth, height: videoHeight } = status.naturalSize;
+          break;
+      }
       
-      console.log(`📐 Video loaded: ${videoWidth}x${videoHeight} (${(videoWidth/videoHeight).toFixed(2)}:1)`);
-      console.log(`📱 Screen: ${SCREEN_WIDTH}x${SCREEN_HEIGHT} (${(SCREEN_WIDTH/SCREEN_HEIGHT).toFixed(2)}:1)`);
-      
-      calculateVideoLayout(videoWidth, videoHeight);
+      setVideoStyle(newStyle);
     }
     
-    if (onLoad) {
-      onLoad(status);
+    if (onLoad) onLoad(status);
+  }, [fillMode, onLoad]);
+
+  // Handle source URL cleanup
+  const getValidatedSource = () => {
+    if (!source || !source.uri) return source;
+    
+    // Ensure URI is correctly formatted
+    let uri = source.uri.trim();
+    
+    // Add http:// if missing
+    if (uri && !uri.startsWith('http://') && !uri.startsWith('https://')) {
+      uri = `http://${uri}`;
     }
+    
+    return { ...source, uri };
   };
 
   return (
     <View style={[styles.container, style]}>
-      {/* Background video for letterboxing effect */}
-      {backgroundStyle && (
-        <Video
-          source={source}
-          style={[styles.backgroundVideo, backgroundStyle]}
-          resizeMode="cover"
-          shouldPlay={shouldPlay}
-          isLooping={isLooping}
-          isMuted={true}
-          rate={1.0}
-          volume={0}
-        />
+      {isLoading && (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#FE2C55" />
+        </View>
       )}
       
-      {/* Main video */}
-      <Video
-        ref={videoRef}
-        source={source}
-        style={[styles.mainVideo, videoStyle]}
-        resizeMode="cover"
-        shouldPlay={shouldPlay}
-        isLooping={isLooping}
-        onLoad={handleVideoLoad}
-        onLoadStart={onLoadStart}
-        onError={onError}
-        onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-        useNativeControls={false}
-        {...videoProps}
-      />
+      {hasError ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Unable to load video</Text>
+        </View>
+      ) : (
+        <Video
+          ref={videoRef}
+          source={getValidatedSource()}
+          style={[styles.mainVideo, videoStyle]}
+          resizeMode="cover"
+          shouldPlay={shouldPlay && !hasError}
+          isLooping={isLooping}
+          onLoad={handleLoad}
+          onLoadStart={handleLoadStart}
+          onError={handleError}
+          onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+          useNativeControls={false}
+          {...videoProps}
+        />
+      )}
     </View>
   );
 };
@@ -167,9 +147,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  backgroundVideo: {
-    zIndex: 1,
-  },
   mainVideo: {
     zIndex: 2,
     backgroundColor: 'transparent',
@@ -177,6 +154,27 @@ const styles = StyleSheet.create({
   defaultVideo: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+  },
+  loaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FFF',
+    fontSize: 16,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });
 
