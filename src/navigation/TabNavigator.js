@@ -6,7 +6,7 @@ import ProfileNavigator from './ProfileNavigator';
 
 
 // Import screens
-import FeedScreen from '../screens/feed/FeedScreen';
+import FeedScreen from '../screens/feed/EnhancedFeedScreen';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import InboxScreen from '../screens/inbox/InboxScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';

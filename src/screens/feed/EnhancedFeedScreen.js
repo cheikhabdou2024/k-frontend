@@ -1,5 +1,5 @@
 // src/screens/feed/FeedScreen.js - Final Integration Version
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -9,16 +9,24 @@ import {
   ActivityIndicator, 
   Text,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
+import { useVideoPreloader } from '../../hooks/useVideoPreLoader';
+import { useVideoLoadingManager } from '../../hooks/useVideoLoadingManager';
+
+
+
 
 // Components
 import VideoItem from '../../components/feed/VideoItem';
-import FeedHeader, { FEED_TYPES } from '../../components/feed/FeedHeader';
+import EnhancedFeedHeader , { FEED_TYPES } from '../../components/feed/EnhancedFeedHeader';
 
-// Hooks
+// Hooks 
 import { useFeedLogic } from '../../hooks/useFeedLogic';
+import { useEnhancedSwipeGestures } from '../../hooks/useEnhancedSwipeGestures';
 
 // Services - Updated to use real API
 import FeedService from '../../services/FeedService';
@@ -26,15 +34,22 @@ import FeedService from '../../services/FeedService';
 // Utils
 import { VIEWABILITY_CONFIG } from '../../utils/videoUtils';
 
-const { height } = Dimensions.get('window');
+const { height, width } = Dimensions.get('window');
 
-const FeedScreen = () => {
+const EnhancedFeedScreen = () => {
   const [activeTab, setActiveTab] = useState(FEED_TYPES.FOR_YOU);
   const [videos, setVideos] = useState([]);
   const [hasMoreVideos, setHasMoreVideos] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [apiStatus, setApiStatus] = useState('loading'); // 'loading', 'api', 'mock'
+  const [isTabSwitching, setIsTabSwitching] = useState(false);
+  const [swipeProgress, setSwipeProgress] = useState(0);
   
+  // Refs
+  const tabSwitchAnimRef = useRef(new Animated.Value(0)).current;
+  const lastSwipeTime = useRef(0);
+
+
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   
@@ -69,6 +84,129 @@ const FeedScreen = () => {
     setLoading,
     setRefreshing,
   } = useFeedLogic(videos, navigation);
+   
+ // NEW: Video optimization hooks
+  const preloaderAPI = useVideoPreloader(videos, currentIndex);
+  const loadingAPI = useVideoLoadingManager(videos, currentIndex);
+
+
+  // Enhanced swipe gesture handlers
+  const swipeGestureHandlers = useEnhancedSwipeGestures({
+    onSwipeUp: (swipeData) => {
+      console.log('🔼 Swipe Up - Next Video');
+      scrollToNextVideo();
+    },
+    
+    onSwipeDown: (swipeData) => {
+      console.log('🔽 Swipe Down - Previous Video');
+      scrollToPreviousVideo();
+    },
+    
+    onSwipeLeft: (swipeData) => {
+      console.log('👈 Swipe Left - Next Tab');
+      switchToNextTab();
+    },
+    
+    onSwipeRight: (swipeData) => {
+      console.log('👉 Swipe Right - Previous Tab');
+      switchToPreviousTab();
+    },
+    
+    onSwipeStart: (position) => {
+      setSwipeProgress(0);
+    },
+    
+    onSwipeEnd: (data) => {
+      setSwipeProgress(0);
+      setIsTabSwitching(false);
+    },
+    
+    disabled: isTabSwitching || loading,
+  });
+
+  // Tab switching logic
+  const switchToNextTab = () => {
+    const tabs = [FEED_TYPES.FOLLOWING, FEED_TYPES.FOR_YOU];
+    const currentIndex = tabs.indexOf(activeTab);
+    const nextIndex = (currentIndex + 1) % tabs.length;
+    const nextTab = tabs[nextIndex];
+    
+    if (nextTab !== activeTab) {
+      animateTabSwitch(nextTab);
+    }
+  };
+
+  const switchToPreviousTab = () => {
+    const tabs = [FEED_TYPES.FOLLOWING, FEED_TYPES.FOR_YOU];
+    const currentIndex = tabs.indexOf(activeTab);
+    const prevIndex = currentIndex === 0 ? tabs.length - 1 : currentIndex - 1;
+    const prevTab = tabs[prevIndex];
+    
+    if (prevTab !== activeTab) {
+      animateTabSwitch(prevTab);
+    }
+  };
+
+  const animateTabSwitch = (newTab) => {
+    // Prevent rapid tab switching
+    const now = Date.now();
+    if (now - lastSwipeTime.current < 500) return;
+    lastSwipeTime.current = now;
+    
+    setIsTabSwitching(true);
+    
+    // Haptic feedback for tab switch
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Animate tab transition
+    Animated.sequence([
+      Animated.timing(tabSwitchAnimRef, {
+        toValue: 0.5,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(tabSwitchAnimRef, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsTabSwitching(false);
+    });
+    
+    // Switch tab
+    handleTabChange(newTab);
+  };
+
+  // Video navigation with smooth scrolling
+  const scrollToNextVideo = () => {
+    if (!flatListRef.current || videos.length === 0) return;
+    
+    const nextIndex = Math.min(currentIndex + 1, videos.length - 1);
+    if (nextIndex !== currentIndex) {
+      flatListRef.current.scrollToIndex({
+        index: nextIndex,
+        animated: true,
+      });
+    }
+  };
+
+  const scrollToPreviousVideo = () => {
+    if (!flatListRef.current || videos.length === 0) return;
+    
+    const prevIndex = Math.max(currentIndex - 1, 0);
+    if (prevIndex !== currentIndex) {
+      flatListRef.current.scrollToIndex({
+        index: prevIndex,
+        animated: true,
+      });
+    }
+  };
+
+
+
+
+
 
   // Load videos when component mounts
   useEffect(() => {
@@ -87,7 +225,7 @@ const FeedScreen = () => {
     try {
       setLoading(true);
       setApiStatus('loading');
-      console.log('📱 FeedScreen: Loading initial videos...');
+      console.log('📱 Enhanced FeedScreen: Chargement des videos initiales');
       
       const loadedVideos = await FeedService.loadVideos();
       
@@ -137,6 +275,14 @@ const FeedScreen = () => {
     }
   };
 
+
+  // Handle tab change
+  const handleTabChange = (tab) => {
+    console.log(`📱 FeedScreen: Tab changed to ${tab}`);
+    setActiveTab(tab);
+  };
+
+
   // Handle pull-to-refresh
   const handleRefresh = async () => {
     try {
@@ -162,11 +308,7 @@ const FeedScreen = () => {
     }
   };
 
-  // Handle tab change
-  const handleTabChange = (tab) => {
-    console.log(`📱 FeedScreen: Tab changed to ${tab}`);
-    setActiveTab(tab);
-  };
+  
 
   // Handle like video with API call
   const handleLikeVideoWithAPI = async (videoId, doubleTap = false) => {
@@ -282,6 +424,20 @@ const FeedScreen = () => {
 
   // Render a single video item
   const renderItem = ({ item, index }) => (
+    <Animated.View 
+      style={{
+        opacity: tabSwitchAnimRef.interpolate({
+          inputRange: [0, 0.5],
+          outputRange: [1, 0.8],
+        }),
+        transform: [{
+          scale: tabSwitchAnimRef.interpolate({
+            inputRange: [0, 0.5],
+            outputRange: [1, 0.98],
+          })
+        }]
+      }}
+    >
     <VideoItem
       item={item}
       index={index}
@@ -309,6 +465,7 @@ const FeedScreen = () => {
       onSoundPress={handleSoundPress}
       onHeartAnimationEnd={onHeartAnimationEnd}
     />
+    </Animated.View>
   );
 
   // Render loading footer for infinite scroll
@@ -330,7 +487,7 @@ const FeedScreen = () => {
         <Text style={styles.loadingText}>
           {apiStatus === 'loading' 
             ? 'Connecting to API...' 
-            : 'Loading awesome videos...'
+            : 'Chargement Des Videos'
           }
         </Text>
         {apiStatus === 'api' && (
@@ -349,6 +506,15 @@ const FeedScreen = () => {
         translucent
         backgroundColor="transparent"
         barStyle="light-content"
+      />
+
+       {/* Enhanced Header */}
+      <EnhancedFeedHeader 
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        insets={insets}
+        swipeProgress={swipeProgress}
+        isSwipeInProgress={isTabSwitching}
       />
       
       {/* Status indicator */}
@@ -372,9 +538,6 @@ const FeedScreen = () => {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onScroll={handleScroll}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        ListFooterComponent={renderLoadingFooter}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -391,12 +554,40 @@ const FeedScreen = () => {
         initialNumToRender={1}
         bounces={true}
         bouncesZoom={false}
+        scrollEventThrottle={16}
         getItemLayout={(data, index) => ({
           length: height,
           offset: height * index,
           index,
         })}
       />
+
+        {/* Swipe feedback overlay */}
+      {isTabSwitching && (
+        <View style={styles.swipeFeedbackOverlay}>
+          <Animated.View 
+            style={[
+              styles.swipeFeedbackIndicator,
+              {
+                opacity: tabSwitchAnimRef.interpolate({
+                  inputRange: [0, 0.5],
+                  outputRange: [0, 1],
+                }),
+                transform: [{
+                  scale: tabSwitchAnimRef.interpolate({
+                    inputRange: [0, 0.5],
+                    outputRange: [0.8, 1],
+                  })
+                }]
+              }
+            ]}
+          >
+            <Text style={styles.swipeFeedbackText}>Switching tabs...</Text>
+          </Animated.View>
+        </View>
+      )}
+
+
     </View>
   );
 };
@@ -443,10 +634,32 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  swipeFeedbackOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 999,
+  },
+  swipeFeedbackIndicator: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  swipeFeedbackText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   loadingFooter: {
     paddingVertical: 20,
     alignItems: 'center',
   },
 });
 
-export default FeedScreen;
+export default EnhancedFeedScreen;

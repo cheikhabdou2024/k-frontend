@@ -5,7 +5,7 @@ import Navigation from './src/navigation';
 import SplashScreen from './src/screens/auth/SplashScreen';
 import OnboardingScreen from './src/screens/auth/OnboardingScreen';
 import InterestsScreen from './src/screens/auth/InterestsScreen';
-import FeedScreen from './src/screens/feed/FeedScreen';
+import EnhancedFeedScreen from './src/screens/feed/EnhancedFeedScreen';
 import * as storage from './src/utils/storage';
 
 export default function App() {
