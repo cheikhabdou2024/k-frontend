@@ -18,6 +18,7 @@ const { width } = Dimensions.get('window');
 
 const VideoActionButtons = ({
   video,
+  isLiked,
   isBookmarked,
   onUserProfilePress,
   onLikePress,
@@ -216,7 +217,7 @@ const VideoActionButtons = ({
     <View style={styles.actionButtonContainer}>
       <TouchableOpacity 
         style={styles.actionButton}
-        onPress={handleLikePress}
+        onPress= { () => onLikePress(video.id)}
         activeOpacity={0.8}
       >
         <Animated.View 

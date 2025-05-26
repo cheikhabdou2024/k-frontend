@@ -37,7 +37,7 @@ const TikTokLoader = ({ size = 60 }) => {
             styles.ball,
             {
               backgroundColor: '#FE2C55',
-              left: 0,
+              left: 8,
               top: size / 2 - ballOffset / 2,
               width: ballOffset,
               height: ballOffset,
@@ -49,7 +49,7 @@ const TikTokLoader = ({ size = 60 }) => {
             styles.ball,
             {
               backgroundColor: '#fff',
-              right: 0,
+              right: 8,
               top: size / 2 - ballOffset / 2,
               width: ballOffset,
               height: ballOffset,

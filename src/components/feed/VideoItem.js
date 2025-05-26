@@ -7,9 +7,9 @@ import VideoOverlays from './VideoOverlays';
 import VideoActionButtons from './VideoActionButton';
 import VideoInfo from './VideoInfo';
 import * as Haptics from 'expo-haptics';
-import VideoSkeletonLoader from '../loading/VideoSkeletonLoader';
 import NetInfo from '@react-native-community/netinfo';
 import TikTokLoader from '../loading/TikTokLoader';
+import EnhancedHeartAnimation from './EnhancedHeartAnimation'; // Updated import
 
 
  
@@ -67,6 +67,10 @@ const VideoItem = ({
   const [isPressed, setIsPressed] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [lastTapPosition, setLastTapPosition] = useState(null);
+  const [heartAnimationIntensity, setHeartAnimationIntensity] = useState('normal');
+  const [localHeartVisible, setLocalHeartVisible] = useState(false); // NEW: local heart visibility state
+  const [isLiked, setIsLiked] = useState(false);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -120,13 +124,19 @@ const VideoItem = ({
   };
   
 
-  // Enhanced tap handling
+  // Update the handleSingleTap function to only handle heart animation
   const handleSingleTap = ({ nativeEvent }) => {
     if (nativeEvent.state === State.ACTIVE) {
-      // Light haptic feedback for single tap
+      // Store tap position
+      setLastTapPosition({
+        x: nativeEvent.absoluteX,
+        y: nativeEvent.absoluteY
+      });
+      
+      // Light haptic feedback
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
-      // Animate tap feedback
+      // Just animate tap feedback without play/pause
       Animated.sequence([
         Animated.timing(tapAnim, {
           toValue: 0.98,
@@ -139,11 +149,31 @@ const VideoItem = ({
           useNativeDriver: true,
         }),
       ]).start();
-      
-      // Call parent tap handler
-      onVideoTap(item.id);
     }
   };
+
+  // Update handleDoubleTap to focus on heart animation
+  const handleDoubleTap = ({ nativeEvent }) => {
+  if (nativeEvent.state === State.ACTIVE) {
+    // Set tap position for heart animation
+    setLastTapPosition({
+      x: nativeEvent.absoluteX,
+      y: nativeEvent.absoluteY
+    });
+    
+    // Show heart animation
+    setHeartAnimationIntensity('strong');
+    setLocalHeartVisible(true);
+    
+    // Haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    
+    // Call onLikeVideo with the video ID
+    if (onLikeVideo && typeof onLikeVideo === 'function') {
+      onLikeVideo(item.id);
+    }
+  }
+};
 
   // Enhanced swipe handling
   const handlePanGesture = ({ nativeEvent }) => {
@@ -279,12 +309,10 @@ const VideoItem = ({
                 waitFor={doubleTapRef}
               >
                <TapGestureHandler
-                  ref={doubleTapRef}
-                  onHandlerStateChange={event => {
-                    // No like/heart logic here anymore
-                  }}
-                  numberOfTaps={2}
-                 >
+  ref={doubleTapRef}
+  onHandlerStateChange={handleDoubleTap}
+  numberOfTaps={2}
+>
                   <Animated.View style={styles.videoWrapper}>
                     {/* Enhanced Video Container */}
                     <TouchableOpacity
@@ -309,18 +337,24 @@ const VideoItem = ({
                         onError={handleVideoError} 
                         rate={1.0}
                         volume={1.0}
+                        isHeartAnimationVisible={isHeartAnimationVisible}
                         onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
+                      />
+
+                      {/* Enhanced Heart Animation */}
+                      <EnhancedHeartAnimation
+                        isVisible={localHeartVisible}
+                        onAnimationEnd={() => setLocalHeartVisible(false)}
+                        size="large"
+                        tapPosition={lastTapPosition}
+                        intensity={heartAnimationIntensity}
                       />
 
                       {/* Video Overlays */}
                       <VideoOverlays
                         isVideoLoading={isVideoLoading}
-                        showPlayPauseIndicator={showPlayPauseIndicator}
-                        isVideoPaused={isVideoPaused}
                         isActive={isActive}
                         playbackStatus={isActive ? playbackStatus : {}}
-                        isHeartAnimationVisible={isHeartAnimationVisible}
-                        onHeartAnimationEnd={onHeartAnimationEnd}
                         videoId={item.id}
                       />
                       
@@ -370,14 +404,18 @@ const VideoItem = ({
 
                     {/* Action Buttons - Right Side */}
                     <VideoActionButtons
-                      video={item}
-                      isBookmarked={isBookmarked}
-                      onUserProfilePress={onUserProfilePress}
-                      onLikePress={onLikeVideo}
+                       video={item}
+                       isLiked={isLiked}
+                       isBookmarked={isBookmarked}
+                       onUserProfilePress={onUserProfilePress}
+                       onLikePress={() => {
+                          setIsLiked(prev => !prev);
+                          onLikeVideo(item.id, !isLiked);
+                        }}
                       onCommentPress={onCommentPress}
                       onBookmarkPress={onBookmarkPress}
                       onSharePress={onSharePress}
-                    />
+                   />
                     
                     {/* User Info Overlay */}
                     <VideoInfo
