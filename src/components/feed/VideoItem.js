@@ -24,12 +24,9 @@ const VideoItem = ({
   insets,
   videoLoading,
   showHeartAnimation,
-  showPlayPauseIndicator,
-  isVideoPaused,
   playbackStatus,
   bookmark,
   videoRefs,
-  onVideoTap,
   onVideoLoadStart,
   onVideoLoad,
   onVideoError,
@@ -47,6 +44,7 @@ const VideoItem = ({
   onSwipeRight,
   
 }) => {
+  const [isLiked, setIsLiked] = useState(false);
   const isActive = index === currentIndex;
   const isVideoLoading = videoLoading[item.id];
   const isHeartAnimationVisible = showHeartAnimation[item.id] || false;
@@ -70,7 +68,6 @@ const VideoItem = ({
   const [lastTapPosition, setLastTapPosition] = useState(null);
   const [heartAnimationIntensity, setHeartAnimationIntensity] = useState('normal');
   const [localHeartVisible, setLocalHeartVisible] = useState(false); // NEW: local heart visibility state
-  const [isLiked, setIsLiked] = useState(false);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -155,22 +152,23 @@ const VideoItem = ({
   // Update handleDoubleTap to focus on heart animation
   const handleDoubleTap = ({ nativeEvent }) => {
   if (nativeEvent.state === State.ACTIVE) {
-    // Set tap position for heart animation
     setLastTapPosition({
       x: nativeEvent.absoluteX,
       y: nativeEvent.absoluteY
     });
-    
-    // Show heart animation
     setHeartAnimationIntensity('strong');
     setLocalHeartVisible(true);
-    
-    // Haptic feedback
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    
-    // Call onLikeVideo with the video ID
-    if (onLikeVideo && typeof onLikeVideo === 'function') {
-      onLikeVideo(item.id);
+
+    // Toggle like state locally
+    setIsLiked(prev => !prev);
+
+    // Call parent handler if needed
+    if (onLikeVideo) {
+      try {
+        onLikeVideo(item.id, !isLiked);
+      } catch (error) {
+        console.error('Failed to toggle like:', error);
+      }
     }
   }
 };
@@ -404,18 +402,24 @@ const VideoItem = ({
 
                     {/* Action Buttons - Right Side */}
                     <VideoActionButtons
-                       video={item}
-                       isLiked={isLiked}
-                       isBookmarked={isBookmarked}
-                       onUserProfilePress={onUserProfilePress}
-                       onLikePress={() => {
-                          setIsLiked(prev => !prev);
-                          onLikeVideo(item.id, !isLiked);
-                        }}
+                      video={item}
+                      isLiked={isLiked}
+                      isBookmarked={isBookmarked}
+                      onUserProfilePress={onUserProfilePress}
+                      onLikePress={() => {
+                        setIsLiked(prev => !prev);
+                        if (onLikeVideo) {
+                          try {
+                            onLikeVideo(item.id, !isLiked);
+                          } catch (error) {
+                            console.error('Failed to toggle like:', error);
+                          }
+                        }
+                      }}
                       onCommentPress={onCommentPress}
                       onBookmarkPress={onBookmarkPress}
                       onSharePress={onSharePress}
-                   />
+                    />
                     
                     {/* User Info Overlay */}
                     <VideoInfo

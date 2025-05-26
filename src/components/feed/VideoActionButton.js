@@ -36,7 +36,7 @@ const VideoActionButtons = ({
   const heartBeatAnim = useRef(new Animated.Value(1)).current;
   
   // State
-  const [isLiked, setIsLiked] = useState(video.isLiked);
+
   const [likesCount, setLikesCount] = useState(video.likes);
   const [isFollowing, setIsFollowing] = useState(video.user.isFollowing || false);
   const [showHeartBurst, setShowHeartBurst] = useState(false);
@@ -74,9 +74,10 @@ const VideoActionButtons = ({
   }, [isLiked]);
 
   // Enhanced like button handler
-  const handleLikePress = () => {
-    const newLikedState = !isLiked;
-    
+ const handleLikePress = () => {
+  if (onLikePress) {
+    onLikePress(video.id, !isLiked);
+  }
     // Optimistic updates
     setIsLiked(newLikedState);
     setLikesCount(prev => newLikedState ? prev + 1 : Math.max(0, prev - 1));
@@ -217,7 +218,7 @@ const VideoActionButtons = ({
     <View style={styles.actionButtonContainer}>
       <TouchableOpacity 
         style={styles.actionButton}
-        onPress= { () => onLikePress(video.id)}
+        onPress={handleLikePress}
         activeOpacity={0.8}
       >
         <Animated.View 
