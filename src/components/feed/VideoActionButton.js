@@ -1,4 +1,4 @@
-// src/components/feed/EnhancedVideoActionButtons.js
+// src/components/feed/VideoActionButton.js - IMPROVED VERSION
 import React, { useRef, useEffect, useState } from 'react';
 import { 
   View, 
@@ -31,7 +31,6 @@ const VideoActionButtons = ({
   // Animation refs
   const containerFadeAnim = useRef(new Animated.Value(1)).current;
   const likeScaleAnim = useRef(new Animated.Value(1)).current;
-  const likeRotateAnim = useRef(new Animated.Value(0)).current;
   const followScaleAnim = useRef(new Animated.Value(1)).current;
   const heartBeatAnim = useRef(new Animated.Value(1)).current;
   
@@ -92,30 +91,16 @@ const VideoActionButtons = ({
     
     // Like animation
     Animated.sequence([
-      Animated.parallel([
-        Animated.timing(likeScaleAnim, {
-          toValue: newLikedState ? 1.3 : 0.8,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(likeRotateAnim, {
-          toValue: newLikedState ? 1 : 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.timing(likeScaleAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(likeRotateAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]),
+      Animated.timing(likeScaleAnim, {
+        toValue: newLikedState ? 1.3 : 0.8,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(likeScaleAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
     ]).start();
     
     // Call parent handler
@@ -126,7 +111,7 @@ const VideoActionButtons = ({
 
   // Enhanced follow button handler
   const handleFollowPress = () => {
-    if (video.user.id === currentUserId) return; // Can't follow yourself
+    if (video.user.id === currentUserId) return;
     
     const newFollowingState = !isFollowing;
     setIsFollowing(newFollowingState);
@@ -152,61 +137,26 @@ const VideoActionButtons = ({
       }),
     ]).start();
     
-    // Call parent handler
     if (onFollowPress) {
       onFollowPress(video.user.id, newFollowingState);
     }
   };
 
-  // Enhanced comment button handler
+  // Enhanced interaction handlers
   const handleCommentPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    // Simple bounce animation
-    const buttonRef = commentButtonRef.current;
-    if (buttonRef) {
-      buttonRef.bounce(800);
-    }
-    
-    if (onCommentPress) {
-      onCommentPress(video.id);
-    }
+    if (onCommentPress) onCommentPress(video.id);
   };
 
-  // Enhanced share button handler
   const handleSharePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    // Share animation
-    const buttonRef = shareButtonRef.current;
-    if (buttonRef) {
-      buttonRef.pulse(600);
-    }
-    
-    if (onSharePress) {
-      onSharePress(video.id);
-    }
+    if (onSharePress) onSharePress(video.id);
   };
 
-  // Enhanced bookmark button handler
   const handleBookmarkPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    // Bookmark animation
-    const buttonRef = bookmarkButtonRef.current;
-    if (buttonRef) {
-      buttonRef.tada(800);
-    }
-    
-    if (onBookmarkPress) {
-      onBookmarkPress(video.id);
-    }
+    if (onBookmarkPress) onBookmarkPress(video.id);
   };
-
-  // Refs for animatable components
-  const commentButtonRef = useRef();
-  const shareButtonRef = useRef();
-  const bookmarkButtonRef = useRef();
 
   // Format count display
   const formatCount = (count) => {
@@ -261,7 +211,7 @@ const VideoActionButtons = ({
     </View>
   );
 
-  // Render like button with heart burst effect
+  // Render like button with enhanced effects
   const renderLikeButton = () => (
     <View style={styles.actionButtonContainer}>
       <TouchableOpacity 
@@ -275,12 +225,6 @@ const VideoActionButtons = ({
             {
               transform: [
                 { scale: Animated.multiply(likeScaleAnim, heartBeatAnim) },
-                { 
-                  rotate: likeRotateAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '15deg'],
-                  })
-                }
               ]
             }
           ]}
@@ -304,9 +248,7 @@ const VideoActionButtons = ({
                     styles.heartParticle,
                     {
                       transform: [
-                        { 
-                          rotate: `${index * 60}deg` 
-                        }
+                        { rotate: `${index * 60}deg` }
                       ]
                     }
                   ]}
@@ -327,17 +269,15 @@ const VideoActionButtons = ({
   // Render comment button
   const renderCommentButton = () => (
     <View style={styles.actionButtonContainer}>
-      <Animatable.View ref={commentButtonRef}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleCommentPress}
-          activeOpacity={0.8}
-        >
-          <View style={styles.actionIconContainer}>
-            <Ionicons name="chatbubble-ellipses-outline" size={28} color="#FFF" />
-          </View>
-        </TouchableOpacity>
-      </Animatable.View>
+      <TouchableOpacity 
+        style={styles.actionButton}
+        onPress={handleCommentPress}
+        activeOpacity={0.8}
+      >
+        <View style={styles.actionIconContainer}>
+          <Ionicons name="chatbubble-ellipses-outline" size={28} color="#FFF" />
+        </View>
+      </TouchableOpacity>
       <Text style={styles.actionText}>
         {formatCount(video.comments)}
       </Text>
@@ -347,21 +287,19 @@ const VideoActionButtons = ({
   // Render bookmark button
   const renderBookmarkButton = () => (
     <View style={styles.actionButtonContainer}>
-      <Animatable.View ref={bookmarkButtonRef}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleBookmarkPress}
-          activeOpacity={0.8}
-        >
-          <View style={styles.actionIconContainer}>
-            <Ionicons 
-              name={isBookmarked ? "bookmark" : "bookmark-outline"} 
-              size={28} 
-              color={isBookmarked ? "#FFD700" : "#FFF"} 
-            />
-          </View>
-        </TouchableOpacity>
-      </Animatable.View>
+      <TouchableOpacity 
+        style={styles.actionButton}
+        onPress={handleBookmarkPress}
+        activeOpacity={0.8}
+      >
+        <View style={styles.actionIconContainer}>
+          <Ionicons 
+            name={isBookmarked ? "bookmark" : "bookmark-outline"} 
+            size={28} 
+            color={isBookmarked ? "#FFD700" : "#FFF"} 
+          />
+        </View>
+      </TouchableOpacity>
       <Text style={[styles.actionText, isBookmarked && styles.bookmarkedText]}>
         {formatCount(video.bookmarks || 568)}
       </Text>
@@ -371,24 +309,22 @@ const VideoActionButtons = ({
   // Render share button
   const renderShareButton = () => (
     <View style={styles.actionButtonContainer}>
-      <Animatable.View ref={shareButtonRef}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleSharePress}
-          activeOpacity={0.8}
-        >
-          <View style={styles.actionIconContainer}>
-            <Ionicons name="arrow-redo-outline" size={28} color="#FFF" />
-          </View>
-        </TouchableOpacity>
-      </Animatable.View>
+      <TouchableOpacity 
+        style={styles.actionButton}
+        onPress={handleSharePress}
+        activeOpacity={0.8}
+      >
+        <View style={styles.actionIconContainer}>
+          <Ionicons name="arrow-redo-outline" size={28} color="#FFF" />
+        </View>
+      </TouchableOpacity>
       <Text style={styles.actionText}>
         {formatCount(video.shares || 201)}
       </Text>
     </View>
   );
 
-  // Render music disc with rotation animation
+  // Render music disc with enhanced rotation animation
   const renderMusicDisc = () => (
     <View style={styles.musicDiscContainer}>
       <Animatable.View 

@@ -1,4 +1,4 @@
-// src/components/feed/EnhancedVideoInfo.js
+// src/components/feed/VideoInfo.js - IMPROVED VERSION
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
@@ -27,7 +27,6 @@ const VideoInfo = ({
   // State
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
-  const [captionHeight, setCaptionHeight] = useState(0);
   
   // Animation refs
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -162,7 +161,7 @@ const VideoInfo = ({
           {
             maxHeight: captionAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [60, 200], // Animate height
+              outputRange: [60, 200],
             })
           }
         ]}>
@@ -271,7 +270,7 @@ const VideoInfo = ({
     );
   };
 
-  // Render sound info
+  // Render sound info with enhanced styling
   const renderSoundInfo = () => {
     if (!video.sound) return null;
     
@@ -290,10 +289,13 @@ const VideoInfo = ({
             <Text style={styles.soundText} numberOfLines={1}>
               {video.sound.name}
             </Text>
-            <View style={styles.soundWaveIcon}>
+            
+            {/* Animated sound waves */}
+            <View style={styles.soundWaveContainer}>
               <View style={[styles.wave, styles.wave1]} />
               <View style={[styles.wave, styles.wave2]} />
               <View style={[styles.wave, styles.wave3]} />
+              <View style={[styles.wave, styles.wave4]} />
             </View>
           </View>
         </LinearGradient>
@@ -562,7 +564,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-  soundWaveIcon: {
+  soundWaveContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -581,6 +583,9 @@ const styles = StyleSheet.create({
   wave3: {
     height: 6,
   },
+  wave4: {
+    height: 10,
+  },
 });
 
-export default VideoInfo;
+export default VideoInfo; 

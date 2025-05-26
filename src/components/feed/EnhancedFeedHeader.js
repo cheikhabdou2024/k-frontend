@@ -1,8 +1,9 @@
-// src/components/feed/EnhancedFeedHeader.js
+// src/components/feed/EnhancedFeedHeader.js - IMPROVED VERSION
 import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Animated, Dimensions } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -21,7 +22,6 @@ const EnhancedFeedHeader = ({
   activeTab, 
   onTabChange, 
   insets,
-  swipeProgress = 0, // For animated transitions
   isSwipeInProgress = false,
 }) => {
   // Animation values
@@ -29,6 +29,14 @@ const EnhancedFeedHeader = ({
   const tabOpacityAnims = useRef(
     TABS.reduce((acc, tab) => {
       acc[tab.key] = new Animated.Value(tab.key === activeTab ? 1 : 0.6);
+      return acc;
+    }, {})
+  ).current;
+  
+  // Scale animations for press feedback
+  const scaleAnims = useRef(
+    TABS.reduce((acc, tab) => {
+      acc[tab.key] = new Animated.Value(1);
       return acc;
     }, {})
   ).current;
@@ -48,65 +56,82 @@ const EnhancedFeedHeader = ({
       friction: 8,
     }).start();
 
-    // Animate tab opacities
+    // Animate tab opacities and scales
     TABS.forEach((tab, index) => {
-      Animated.timing(tabOpacityAnims[tab.key], {
-        toValue: index === activeTabIndex ? 1 : 0.6,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+      const isActive = index === activeTabIndex;
+      
+      Animated.parallel([
+        Animated.timing(tabOpacityAnims[tab.key], {
+          toValue: isActive ? 1 : 0.6,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnims[tab.key], {
+          toValue: isActive ? 1.1 : 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        })
+      ]).start();
     });
   }, [activeTab, activeTabIndex]);
 
-  // Handle tab press with haptic feedback
+  // Handle tab press with enhanced feedback
   const handleTabPress = (tabKey) => {
     if (tabKey === activeTab) return;
     
     // Haptic feedback
     Haptics.selectionAsync();
     
+    // Press animation
+    const targetScale = scaleAnims[tabKey];
+    Animated.sequence([
+      Animated.timing(targetScale, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(targetScale, {
+        toValue: 1.1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+    ]).start();
+    
     // Call parent handler
     onTabChange(tabKey);
   };
 
-  // Calculate indicator position with swipe progress
+  // Calculate indicator transform
   const getIndicatorTransform = () => {
-    if (isSwipeInProgress) {
-      // During swipe, interpolate based on swipe progress
-      const basePosition = activeTabIndex;
-      const swipeOffset = swipeProgress * 0.5; // Adjust sensitivity
-      
-      return [{
-        translateX: indicatorAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [
-            (basePosition + swipeOffset) * (SCREEN_WIDTH * 0.25),
-            (basePosition + swipeOffset + 1) * (SCREEN_WIDTH * 0.25)
-          ],
-        })
-      }];
-    }
+    const tabWidth = SCREEN_WIDTH * 0.25; // Approximate tab width
     
-    // Normal state - use animated value
     return [{
       translateX: indicatorAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: [0, SCREEN_WIDTH * 0.25],
+        outputRange: [0, tabWidth],
       })
     }];
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Left icon */}
+      {/* Left icon with enhanced styling */}
       <TouchableOpacity 
         style={styles.iconButton}
         onPress={() => onTabChange(FEED_TYPES.EXPLORE)}
+        activeOpacity={0.7}
       >
-        <Ionicons name="tv-outline" size={24} color="#fff" />
+        <LinearGradient
+          colors={['rgba(254, 44, 85, 0.1)', 'rgba(37, 244, 238, 0.1)']}
+          style={styles.iconGradient}
+        >
+          <Ionicons name="tv-outline" size={24} color="#fff" />
+        </LinearGradient>
       </TouchableOpacity>
       
-      {/* Tab switcher */}
+      {/* Tab switcher with enhanced animations */}
       <View style={styles.tabsContainer}>
         <View style={styles.tabsRow}>
           {TABS.map((tab, index) => (
@@ -116,27 +141,31 @@ const EnhancedFeedHeader = ({
               onPress={() => handleTabPress(tab.key)}
               activeOpacity={0.7}
             >
-              <Animated.Text 
-                style={[
-                  styles.tabText,
-                  {
-                    opacity: tabOpacityAnims[tab.key],
-                    transform: [{
-                      scale: tabOpacityAnims[tab.key].interpolate({
-                        inputRange: [0.6, 1],
-                        outputRange: [0.95, 1],
-                      })
-                    }]
-                  }
-                ]}
+              <Animated.View
+                style={{
+                  transform: [{ scale: scaleAnims[tab.key] }]
+                }}
               >
-                {tab.label}
-              </Animated.Text>
+                <Animated.Text 
+                  style={[
+                    styles.tabText,
+                    {
+                      opacity: tabOpacityAnims[tab.key],
+                      color: tabOpacityAnims[tab.key].interpolate({
+                        inputRange: [0.6, 1],
+                        outputRange: ['rgba(255,255,255,0.6)', '#FFF'],
+                      })
+                    }
+                  ]}
+                >
+                  {tab.label}
+                </Animated.Text>
+              </Animated.View>
             </TouchableOpacity>
           ))}
         </View>
         
-        {/* Animated indicator */}
+        {/* Enhanced animated indicator */}
         <Animated.View 
           style={[
             styles.activeIndicator,
@@ -144,20 +173,61 @@ const EnhancedFeedHeader = ({
               transform: getIndicatorTransform(),
             }
           ]} 
-        />
+        >
+          <LinearGradient
+            colors={['#FE2C55', '#25F4EE']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.indicatorGradient}
+          />
+        </Animated.View>
         
-        {/* Swipe hint (subtle visual cue) */}
+        {/* Swipe hint with pulsing animation */}
         {!isSwipeInProgress && (
-          <View style={styles.swipeHint}>
+          <Animated.View 
+            style={[
+              styles.swipeHint,
+              {
+                opacity: indicatorAnim.interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [0.3, 0.1, 0.3],
+                })
+              }
+            ]}
+          >
             <Text style={styles.swipeHintText}>← Swipe →</Text>
-          </View>
+          </Animated.View>
         )}
       </View>
       
-      {/* Right icon */}
-      <TouchableOpacity style={styles.iconButton}>
-        <Ionicons name="search" size={24} color="#fff" />
+      {/* Right icon with search functionality */}
+      <TouchableOpacity 
+        style={styles.iconButton}
+        activeOpacity={0.7}
+      >
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
+          style={styles.iconGradient}
+        >
+          <Ionicons name="search" size={24} color="#fff" />
+        </LinearGradient>
       </TouchableOpacity>
+      
+      {/* Live indicator (optional) */}
+      <View style={styles.liveIndicator}>
+        <Animated.View 
+          style={[
+            styles.liveDot,
+            {
+              opacity: indicatorAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.5, 1],
+              })
+            }
+          ]} 
+        />
+        <Text style={styles.liveText}>LIVE</Text>
+      </View>
     </View>
   );
 };
@@ -174,31 +244,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  iconGradient: {
+    padding: 8,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabsContainer: {
     position: 'relative',
     alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 20,
   },
   tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   tabButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     marginHorizontal: 4,
+    borderRadius: 16,
   },
   tabText: {
     color: '#FFF',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 16,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   activeIndicator: {
     position: 'absolute',
     bottom: -2,
-    width: 20,
+    width: 40,
     height: 3,
-    backgroundColor: '#FFF',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  indicatorGradient: {
+    flex: 1,
     borderRadius: 2,
   },
   swipeHint: {
@@ -209,10 +302,33 @@ const styles = StyleSheet.create({
   swipeHintText: {
     color: 'rgba(255, 255, 255, 0.4)',
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
-  iconButton: {
-    padding: 8,
+  liveIndicator: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFF',
+    marginRight: 4,
+  },
+  liveText: {
+    color: '#FFF',
+    fontSize: 8,
+    fontWeight: 'bold',
   },
 });
 

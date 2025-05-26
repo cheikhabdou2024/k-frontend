@@ -1,4 +1,4 @@
-// src/screens/feed/FeedScreen.js - Final Integration Version
+// src/screens/feed/EnhancedFeedScreen.js - IMPROVED VERSION
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -10,25 +10,20 @@ import {
   Text,
   RefreshControl,
   Animated,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { useVideoPreloader } from '../../hooks/useVideoPreLoader';
-import { useVideoLoadingManager } from '../../hooks/useVideoLoadingManager';
-
-
-
 
 // Components
 import VideoItem from '../../components/feed/VideoItem';
-import EnhancedFeedHeader , { FEED_TYPES } from '../../components/feed/EnhancedFeedHeader';
+import EnhancedFeedHeader, { FEED_TYPES } from '../../components/feed/EnhancedFeedHeader';
 
 // Hooks 
 import { useFeedLogic } from '../../hooks/useFeedLogic';
-import { useEnhancedSwipeGestures } from '../../hooks/useEnhancedSwipeGestures';
 
-// Services - Updated to use real API
+// Services
 import FeedService from '../../services/FeedService';
 
 // Utils
@@ -41,18 +36,23 @@ const EnhancedFeedScreen = () => {
   const [videos, setVideos] = useState([]);
   const [hasMoreVideos, setHasMoreVideos] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [apiStatus, setApiStatus] = useState('loading'); // 'loading', 'api', 'mock'
+  const [apiStatus, setApiStatus] = useState('loading');
   const [isTabSwitching, setIsTabSwitching] = useState(false);
-  const [swipeProgress, setSwipeProgress] = useState(0);
   
-  // Refs
-  const tabSwitchAnimRef = useRef(new Animated.Value(0)).current;
-  const lastSwipeTime = useRef(0);
-
+  // Gesture handling
+  const [gestureState, setGestureState] = useState({
+    isScrolling: false,
+    lastSwipeTime: 0,
+    swipeDirection: null,
+  });
 
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   
+  // Animation refs
+  const tabSwitchAnimRef = useRef(new Animated.Value(0)).current;
+  const gestureAnim = useRef(new Animated.Value(0)).current;
+
   // Use custom hook for feed logic
   const {
     currentIndex,
@@ -84,129 +84,88 @@ const EnhancedFeedScreen = () => {
     setLoading,
     setRefreshing,
   } = useFeedLogic(videos, navigation);
-   
- // NEW: Video optimization hooks
-  const preloaderAPI = useVideoPreloader(videos, currentIndex);
-  const loadingAPI = useVideoLoadingManager(videos, currentIndex);
 
+  // Enhanced Pan Responder for gesture handling
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        const { dx, dy } = gestureState;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only capture horizontal swipes for tab switching
+        const isHorizontalSwipe = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 30;
+        return isHorizontalSwipe && !gestureState.isScrolling;
+      },
+      
+      onPanResponderGrant: (evt, gestureState) => {
+        const now = Date.now();
+        if (now - gestureState.lastSwipeTime < 500) return; // Prevent rapid swipes
+        
+        setGestureState(prev => ({ ...prev, lastSwipeTime: now }));
+        gestureAnim.setValue(0);
+      },
+      
+      onPanResponderMove: (evt, gestureState) => {
+        if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
+          gestureAnim.setValue(gestureState.dx / width);
+        }
+      },
+      
+      onPanResponderRelease: (evt, gestureState) => {
+        const { dx, vx } = gestureState;
+        const shouldSwitch = Math.abs(dx) > width * 0.25 || Math.abs(vx) > 0.5;
+        
+        if (shouldSwitch) {
+          const direction = dx > 0 ? 'right' : 'left';
+          handleTabSwipeGesture(direction);
+        }
+        
+        // Reset animation
+        Animated.spring(gestureAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      },
+    })
+  ).current;
 
-  // Enhanced swipe gesture handlers
-  const swipeGestureHandlers = useEnhancedSwipeGestures({
-    onSwipeUp: (swipeData) => {
-      console.log('🔼 Swipe Up - Next Video');
-      scrollToNextVideo();
-    },
-    
-    onSwipeDown: (swipeData) => {
-      console.log('🔽 Swipe Down - Previous Video');
-      scrollToPreviousVideo();
-    },
-    
-    onSwipeLeft: (swipeData) => {
-      console.log('👈 Swipe Left - Next Tab');
-      switchToNextTab();
-    },
-    
-    onSwipeRight: (swipeData) => {
-      console.log('👉 Swipe Right - Previous Tab');
-      switchToPreviousTab();
-    },
-    
-    onSwipeStart: (position) => {
-      setSwipeProgress(0);
-    },
-    
-    onSwipeEnd: (data) => {
-      setSwipeProgress(0);
-      setIsTabSwitching(false);
-    },
-    
-    disabled: isTabSwitching || loading,
-  });
-
-  // Tab switching logic
-  const switchToNextTab = () => {
+  // Handle tab swipe gestures
+  const handleTabSwipeGesture = (direction) => {
     const tabs = [FEED_TYPES.FOLLOWING, FEED_TYPES.FOR_YOU];
     const currentIndex = tabs.indexOf(activeTab);
-    const nextIndex = (currentIndex + 1) % tabs.length;
-    const nextTab = tabs[nextIndex];
     
-    if (nextTab !== activeTab) {
-      animateTabSwitch(nextTab);
+    let newIndex;
+    if (direction === 'left') {
+      newIndex = (currentIndex + 1) % tabs.length;
+    } else {
+      newIndex = currentIndex === 0 ? tabs.length - 1 : currentIndex - 1;
     }
-  };
-
-  const switchToPreviousTab = () => {
-    const tabs = [FEED_TYPES.FOLLOWING, FEED_TYPES.FOR_YOU];
-    const currentIndex = tabs.indexOf(activeTab);
-    const prevIndex = currentIndex === 0 ? tabs.length - 1 : currentIndex - 1;
-    const prevTab = tabs[prevIndex];
     
-    if (prevTab !== activeTab) {
-      animateTabSwitch(prevTab);
-    }
-  };
-
-  const animateTabSwitch = (newTab) => {
-    // Prevent rapid tab switching
-    const now = Date.now();
-    if (now - lastSwipeTime.current < 500) return;
-    lastSwipeTime.current = now;
-    
-    setIsTabSwitching(true);
-    
-    // Haptic feedback for tab switch
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Animate tab transition
-    Animated.sequence([
-      Animated.timing(tabSwitchAnimRef, {
-        toValue: 0.5,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(tabSwitchAnimRef, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setIsTabSwitching(false);
-    });
-    
-    // Switch tab
-    handleTabChange(newTab);
-  };
-
-  // Video navigation with smooth scrolling
-  const scrollToNextVideo = () => {
-    if (!flatListRef.current || videos.length === 0) return;
-    
-    const nextIndex = Math.min(currentIndex + 1, videos.length - 1);
-    if (nextIndex !== currentIndex) {
-      flatListRef.current.scrollToIndex({
-        index: nextIndex,
-        animated: true,
+    const newTab = tabs[newIndex];
+    if (newTab !== activeTab) {
+      setIsTabSwitching(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      // Animate tab transition
+      Animated.sequence([
+        Animated.timing(tabSwitchAnimRef, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tabSwitchAnimRef, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setIsTabSwitching(false);
       });
+      
+      handleTabChange(newTab);
     }
   };
-
-  const scrollToPreviousVideo = () => {
-    if (!flatListRef.current || videos.length === 0) return;
-    
-    const prevIndex = Math.max(currentIndex - 1, 0);
-    if (prevIndex !== currentIndex) {
-      flatListRef.current.scrollToIndex({
-        index: prevIndex,
-        animated: true,
-      });
-    }
-  };
-
-
-
-
-
 
   // Load videos when component mounts
   useEffect(() => {
@@ -220,16 +179,15 @@ const EnhancedFeedScreen = () => {
     }
   }, [activeTab]);
 
-  // Load initial videos with API status tracking
+  // Load initial videos
   const loadInitialVideos = async () => {
     try {
       setLoading(true);
       setApiStatus('loading');
-      console.log('📱 Enhanced FeedScreen: Chargement des videos initiales');
+      console.log('📱 Loading initial videos...');
       
       const loadedVideos = await FeedService.loadVideos();
       
-      // Check if we got real API data or mock data
       const isApiData = loadedVideos.some(video => 
         video.videoUrl && video.videoUrl.includes('pixabay')
       );
@@ -238,20 +196,20 @@ const EnhancedFeedScreen = () => {
       setCurrentPage(1);
       setApiStatus(isApiData ? 'api' : 'mock');
       
-      console.log(`📱 FeedScreen: Loaded ${loadedVideos.length} videos from ${isApiData ? 'API' : 'mock'}`);
+      console.log(`📱 Loaded ${loadedVideos.length} videos from ${isApiData ? 'API' : 'mock'}`);
       
     } catch (error) {
-      console.error('📱 FeedScreen: Error loading initial videos:', error);
+      console.error('📱 Error loading initial videos:', error);
       setApiStatus('mock');
     } finally {
       setLoading(false);
     }
   };
 
-  // Load videos by tab with API status tracking
+  // Load videos by tab
   const loadVideosByTab = async (feedType) => {
     try {
-      console.log(`📱 FeedScreen: Loading ${feedType} videos...`);
+      console.log(`📱 Loading ${feedType} videos...`);
       
       const { videos: loadedVideos, hasMore } = await FeedService.loadVideosByFeedType(
         feedType.toLowerCase(), 
@@ -263,31 +221,31 @@ const EnhancedFeedScreen = () => {
       setHasMoreVideos(hasMore);
       setCurrentPage(1);
       
-      // Reset to first video
+      // Reset to first video with smooth animation
       if (flatListRef.current && loadedVideos.length > 0) {
-        flatListRef.current.scrollToIndex({ index: 0, animated: true });
+        flatListRef.current.scrollToIndex({ 
+          index: 0, 
+          animated: true,
+          viewPosition: 0,
+        });
       }
       
-      console.log(`📱 FeedScreen: Loaded ${loadedVideos.length} ${feedType} videos`);
-      
     } catch (error) {
-      console.error(`📱 FeedScreen: Error loading ${feedType} videos:`, error);
+      console.error(`📱 Error loading ${feedType} videos:`, error);
     }
   };
 
-
   // Handle tab change
   const handleTabChange = (tab) => {
-    console.log(`📱 FeedScreen: Tab changed to ${tab}`);
+    console.log(`📱 Tab changed to ${tab}`);
     setActiveTab(tab);
   };
-
 
   // Handle pull-to-refresh
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      console.log('📱 FeedScreen: Refreshing videos...');
+      console.log('📱 Refreshing videos...');
       
       const loadedVideos = await FeedService.loadVideos(true);
       setVideos(loadedVideos);
@@ -299,23 +257,17 @@ const EnhancedFeedScreen = () => {
         flatListRef.current.scrollToIndex({ index: 0, animated: true });
       }
       
-      console.log(`📱 FeedScreen: Refreshed with ${loadedVideos.length} videos`);
-      
     } catch (error) {
-      console.error('📱 FeedScreen: Error refreshing videos:', error);
+      console.error('📱 Error refreshing videos:', error);
     } finally {
       setRefreshing(false);
     }
   };
 
-  
-
-  // Handle like video with API call
+  // Enhanced like handler
   const handleLikeVideoWithAPI = async (videoId, doubleTap = false) => {
     try {
-      console.log(`📱 FeedScreen: Liking video ${videoId}`);
-      
-      // Optimistically update UI
+      // Optimistic update
       setVideos(prevVideos => 
         prevVideos.map(video => {
           if (video.id === videoId) {
@@ -332,18 +284,17 @@ const EnhancedFeedScreen = () => {
         })
       );
       
-      // Call the hook's like handler for animations
+      // Call animation handler
       handleLikeVideo(videoId, doubleTap);
       
-      // Make API call
+      // API call
       const video = videos.find(v => v.id === videoId);
       if (video) {
         await FeedService.toggleVideoLike(videoId, video.isLiked);
-        console.log(`✅ Successfully liked video ${videoId}`);
       }
     } catch (error) {
       console.error('❌ Error liking video:', error);
-      // Revert optimistic update on error
+      // Revert on error
       setVideos(prevVideos => 
         prevVideos.map(video => {
           if (video.id === videoId) {
@@ -361,125 +312,113 @@ const EnhancedFeedScreen = () => {
     }
   };
 
-  // Handle load more videos (infinite scroll)
+  // Handle load more videos
   const handleLoadMore = async () => {
     if (!hasMoreVideos || loading || refreshing) return;
     
     try {
-      console.log('📱 FeedScreen: Loading more videos...');
-      
       const nextPage = currentPage + 1;
       const { videos: moreVideos, hasMore } = await FeedService.loadVideosByFeedType(
         activeTab.toLowerCase(),
         nextPage,
-        5 // Load fewer videos for pagination
+        5
       );
       
       setVideos(prevVideos => [...prevVideos, ...moreVideos]);
       setHasMoreVideos(hasMore);
       setCurrentPage(nextPage);
       
-      console.log(`📱 FeedScreen: Loaded ${moreVideos.length} more videos`);
-      
     } catch (error) {
-      console.error('📱 FeedScreen: Error loading more videos:', error);
+      console.error('📱 Error loading more videos:', error);
     }
   };
 
-  // Enhanced bookmark handler with API
+  // Enhanced bookmark handler
   const handleBookmarkWithAPI = async (videoId) => {
     try {
-      console.log(`📱 FeedScreen: Bookmarking video ${videoId}`);
-      
       const currentStatus = bookmark[videoId] || false;
-      
-      // Optimistically update UI
       handleBookmarkPress(videoId);
-      
-      // Make API call
       await FeedService.toggleBookmark(videoId, currentStatus);
-      console.log(`✅ Successfully bookmarked video ${videoId}`);
-      
     } catch (error) {
       console.error('❌ Error bookmarking video:', error);
-      // Revert on error
-      handleBookmarkPress(videoId);
+      handleBookmarkPress(videoId); // Revert
     }
   };
 
-  // Enhanced share handler with API
-  const handleShareWithAPI = async (videoId) => {
-    try {
-      console.log(`📱 FeedScreen: Sharing video ${videoId}`);
-      
-      const result = await FeedService.shareVideo(videoId);
-      if (result.success) {
-        console.log('✅ Share URL:', result.shareUrl);
-        // Here you could show a share sheet or copy to clipboard
-      }
-    } catch (error) {
-      console.error('❌ Error sharing video:', error);
-    }
-  };
-
-  // Render a single video item
+  // Render video item with enhanced animations
   const renderItem = ({ item, index }) => (
     <Animated.View 
-      style={{
-        opacity: tabSwitchAnimRef.interpolate({
-          inputRange: [0, 0.5],
-          outputRange: [1, 0.8],
-        }),
-        transform: [{
-          scale: tabSwitchAnimRef.interpolate({
-            inputRange: [0, 0.5],
-            outputRange: [1, 0.98],
-          })
-        }]
-      }}
+      style={[
+        styles.videoItemContainer,
+        {
+          opacity: tabSwitchAnimRef.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.7],
+          }),
+          transform: [
+            {
+              scale: tabSwitchAnimRef.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 0.95],
+              })
+            },
+            {
+              translateX: gestureAnim.interpolate({
+                inputRange: [-1, 0, 1],
+                outputRange: [-50, 0, 50],
+              })
+            }
+          ]
+        }
+      ]}
     >
-    <VideoItem
-      item={item}
-      index={index}
-      currentIndex={currentIndex}
-      activeTab={activeTab}
-      onTabChange={handleTabChange}
-      insets={insets}
-      videoLoading={videoLoading}
-      showHeartAnimation={showHeartAnimation}
-      showPlayPauseIndicator={showPlayPauseIndicator}
-      isVideoPaused={isVideoPaused}
-      playbackStatus={playbackStatus}
-      bookmark={bookmark}
-      videoRefs={videoRefs}
-      onVideoTap={handleVideoTap}
-      onVideoLoadStart={onVideoLoadStart}
-      onVideoLoad={onVideoLoad}
-      onVideoError={onVideoError}
-      onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-      onUserProfilePress={handleUserProfilePress}
-      onLikeVideo={handleLikeVideoWithAPI}
-      onCommentPress={handleCommentPress}
-      onBookmarkPress={handleBookmarkWithAPI}
-      onSharePress={handleShareWithAPI}
-      onSoundPress={handleSoundPress}
-      onHeartAnimationEnd={onHeartAnimationEnd}
-    />
+      <VideoItem
+        item={item}
+        index={index}
+        currentIndex={currentIndex}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        insets={insets}
+        videoLoading={videoLoading}
+        showHeartAnimation={showHeartAnimation}
+        showPlayPauseIndicator={showPlayPauseIndicator}
+        isVideoPaused={isVideoPaused}
+        playbackStatus={playbackStatus}
+        bookmark={bookmark}
+        videoRefs={videoRefs}
+        onVideoTap={handleVideoTap}
+        onVideoLoadStart={onVideoLoadStart}
+        onVideoLoad={onVideoLoad}
+        onVideoError={onVideoError}
+        onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+        onUserProfilePress={handleUserProfilePress}
+        onLikeVideo={handleLikeVideoWithAPI}
+        onCommentPress={handleCommentPress}
+        onBookmarkPress={handleBookmarkWithAPI}
+        onSharePress={handleSharePress}
+        onSoundPress={handleSoundPress}
+        onHeartAnimationEnd={onHeartAnimationEnd}
+        onSwipeUp={() => {
+          if (currentIndex < videos.length - 1) {
+            flatListRef.current?.scrollToIndex({ 
+              index: currentIndex + 1, 
+              animated: true 
+            });
+          }
+        }}
+        onSwipeDown={() => {
+          if (currentIndex > 0) {
+            flatListRef.current?.scrollToIndex({ 
+              index: currentIndex - 1, 
+              animated: true 
+            });
+          }
+        }}
+      />
     </Animated.View>
   );
 
-  // Render loading footer for infinite scroll
-  const renderLoadingFooter = () => {
-    if (!hasMoreVideos) return null;
-    
-    return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color="#FE2C55" />
-      </View>
-    );
-  };
-
-  // Render loading state with API status
+  // Loading state
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -487,7 +426,7 @@ const EnhancedFeedScreen = () => {
         <Text style={styles.loadingText}>
           {apiStatus === 'loading' 
             ? 'Connecting to API...' 
-            : 'Chargement Des Videos'
+            : 'Loading Videos...'
           }
         </Text>
         {apiStatus === 'api' && (
@@ -501,23 +440,22 @@ const EnhancedFeedScreen = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       <StatusBar
         translucent
         backgroundColor="transparent"
         barStyle="light-content"
       />
 
-       {/* Enhanced Header */}
+      {/* Enhanced Header */}
       <EnhancedFeedHeader 
         activeTab={activeTab}
         onTabChange={handleTabChange}
         insets={insets}
-        swipeProgress={swipeProgress}
         isSwipeInProgress={isTabSwitching}
       />
       
-      {/* Status indicator */}
+      {/* API Status Indicator */}
       {apiStatus === 'api' && (
         <View style={styles.apiIndicator}>
           <Text style={styles.apiIndicatorText}>🔗 Live API</Text>
@@ -548,12 +486,13 @@ const EnhancedFeedScreen = () => {
             progressViewOffset={insets.top + 50}
           />
         }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         removeClippedSubviews={true}
         maxToRenderPerBatch={2}
         windowSize={3}
         initialNumToRender={1}
         bounces={true}
-        bouncesZoom={false}
         scrollEventThrottle={16}
         getItemLayout={(data, index) => ({
           length: height,
@@ -562,32 +501,20 @@ const EnhancedFeedScreen = () => {
         })}
       />
 
-        {/* Swipe feedback overlay */}
+      {/* Tab switching feedback */}
       {isTabSwitching && (
-        <View style={styles.swipeFeedbackOverlay}>
-          <Animated.View 
-            style={[
-              styles.swipeFeedbackIndicator,
-              {
-                opacity: tabSwitchAnimRef.interpolate({
-                  inputRange: [0, 0.5],
-                  outputRange: [0, 1],
-                }),
-                transform: [{
-                  scale: tabSwitchAnimRef.interpolate({
-                    inputRange: [0, 0.5],
-                    outputRange: [0.8, 1],
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.swipeFeedbackText}>Switching tabs...</Text>
-          </Animated.View>
-        </View>
+        <Animated.View style={[
+          styles.swipeFeedbackOverlay,
+          {
+            opacity: tabSwitchAnimRef.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 1],
+            }),
+          }
+        ]}>
+          <Text style={styles.swipeFeedbackText}>Switching tabs...</Text>
+        </Animated.View>
       )}
-
-
     </View>
   );
 };
@@ -634,31 +561,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  videoItemContainer: {
+    width,
+    height,
+  },
   swipeFeedbackOverlay: {
     position: 'absolute',
-    top: 0,
+    top: '50%',
     left: 0,
     right: 0,
-    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
     zIndex: 999,
-  },
-  swipeFeedbackIndicator: {
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
   },
   swipeFeedbackText: {
     color: '#FFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-  },
-  loadingFooter: {
-    paddingVertical: 20,
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
 });
 
