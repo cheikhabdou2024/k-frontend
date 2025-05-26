@@ -1,4 +1,4 @@
-// src/components/feed/EnhancedFeedHeader.js - IMPROVED VERSION
+// src/components/feed/EnhancedFeedHeader.js - REFINED VERSION
 import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Animated, Dimensions } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const TAB_WIDTH = SCREEN_WIDTH / 2;
 
 export const FEED_TYPES = {
   EXPLORE: 'explore',
@@ -41,6 +42,9 @@ const EnhancedFeedHeader = ({
     }, {})
   ).current;
 
+  // Animated value for underline
+  const underlineAnim = useRef(new Animated.Value(activeTab === 'FOR_YOU' ? 0 : 1)).current;
+
   // Calculate tab positions
   const getTabIndex = (tabKey) => TABS.findIndex(tab => tab.key === tabKey);
   const activeTabIndex = getTabIndex(activeTab);
@@ -74,6 +78,11 @@ const EnhancedFeedHeader = ({
         })
       ]).start();
     });
+
+    Animated.spring(underlineAnim, {
+      toValue: activeTab === 'FOR_YOU' ? 0 : 1,
+      useNativeDriver: false,
+    }).start();
   }, [activeTab, activeTabIndex]);
 
   // Handle tab press with enhanced feedback
@@ -105,15 +114,18 @@ const EnhancedFeedHeader = ({
 
   // Calculate indicator transform
   const getIndicatorTransform = () => {
-    const tabWidth = SCREEN_WIDTH * 0.25; // Approximate tab width
-    
     return [{
       translateX: indicatorAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: [0, tabWidth],
+        outputRange: [0, TAB_WIDTH],
       })
     }];
   };
+
+  const underlineLeft = underlineAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, TAB_WIDTH],
+  });
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -181,6 +193,17 @@ const EnhancedFeedHeader = ({
             style={styles.indicatorGradient}
           />
         </Animated.View>
+        
+        {/* Underline indicator for tab active state */}
+        <Animated.View
+          style={[
+            styles.underline,
+            {
+              left: underlineLeft,
+              width: TAB_WIDTH,
+            },
+          ]}
+        />
         
         {/* Swipe hint with pulsing animation */}
         {!isSwipeInProgress && (
@@ -329,6 +352,13 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 8,
     fontWeight: 'bold',
+  },
+  underline: {
+    position: 'absolute',
+    bottom: 0,
+    height: 3,
+    backgroundColor: '#fff',
+    borderRadius: 2,
   },
 });
 

@@ -237,8 +237,15 @@ const EnhancedFeedScreen = () => {
 
   // Handle tab change
   const handleTabChange = (tab) => {
-    console.log(`📱 Tab changed to ${tab}`);
     setActiveTab(tab);
+  };
+
+  // Handle horizontal swipe to switch tabs
+  const handleSwipeLeft = () => {
+    if (activeTab === 'FOR_YOU') handleTabChange('FOLLOWING');
+  };
+  const handleSwipeRight = () => {
+    if (activeTab === 'FOLLOWING') handleTabChange('FOR_YOU');
   };
 
   // Handle pull-to-refresh
@@ -414,6 +421,8 @@ const EnhancedFeedScreen = () => {
             });
           }
         }}
+        onSwipeLeft={handleSwipeLeft}
+        onSwipeRight={handleSwipeRight}
       />
     </Animated.View>
   );

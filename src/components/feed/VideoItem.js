@@ -1,17 +1,18 @@
 // src/components/feed/VideoItem.js - Updated with Adaptive Video
 import React, { useRef, useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Dimensions, Animated  } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, Text } from 'react-native';
 import SimpleAdaptiveVideo from '../video/SimpleAdaptiveVideo'; // Using the simple version
 import { PanGestureHandler, TapGestureHandler, State } from 'react-native-gesture-handler';
-import EnhancedFeedHeader from './EnhancedFeedHeader';
 import VideoOverlays from './VideoOverlays';
 import VideoActionButtons from './VideoActionButton';
 import VideoInfo from './VideoInfo';
 import * as Haptics from 'expo-haptics';
 import VideoSkeletonLoader from '../loading/VideoSkeletonLoader';
+import NetInfo from '@react-native-community/netinfo';
+import TikTokLoader from '../loading/TikTokLoader';
 
 
-
+ 
 const { width, height } = Dimensions.get('window');
 
 const VideoItem = ({
@@ -42,6 +43,9 @@ const VideoItem = ({
   onHeartAnimationEnd,
   onSwipeUp,
   onSwipeDown,
+  onSwipeLeft,
+  onSwipeRight,
+  
 }) => {
   const isActive = index === currentIndex;
   const isVideoLoading = videoLoading[item.id];
@@ -57,10 +61,19 @@ const VideoItem = ({
   const doubleTapRef = useRef();
   const singleTapRef = useRef();
   const panRef = useRef();
+  const panXRef = useRef(); // NEW: for horizontal pan
   
   // State
   const [isPressed, setIsPressed] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected);
+    });
+    return () => unsubscribe();
+  }, []);
 
    // Reset animations when video becomes active/inactive
   useEffect(() => {
@@ -132,30 +145,6 @@ const VideoItem = ({
     }
   };
 
-  const handleDoubleTap = ({ nativeEvent }) => {
-    if (nativeEvent.state === State.ACTIVE) {
-      // Medium haptic feedback for double tap (like)
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      
-      // Animate heart scale
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 1.05,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      
-      // Trigger like with double tap animation
-      onLikeVideo(item.id, true);
-    }
-  };
-
   // Enhanced swipe handling
   const handlePanGesture = ({ nativeEvent }) => {
     const { translationY, velocityY, state } = nativeEvent;
@@ -206,6 +195,27 @@ const VideoItem = ({
     }
   };
 
+  // --- Horizontal swipe handler ---
+  const handlePanGestureX = ({ nativeEvent }) => {
+    const { translationX, velocityX, state } = nativeEvent;
+
+    if (state === State.END) {
+      const threshold = width * 0.15;
+      const velocityThreshold = 800;
+      const shouldSwipe =
+        Math.abs(translationX) > threshold ||
+        Math.abs(velocityX) > velocityThreshold;
+
+      if (shouldSwipe) {
+        if (translationX > 0 && onSwipeRight) {
+          onSwipeRight();
+        } else if (translationX < 0 && onSwipeLeft) {
+          onSwipeLeft();
+        }
+      }
+    }
+  };
+
   // Press animation handlers
   const handlePressIn = () => {
     setIsPressed(true);
@@ -247,127 +257,138 @@ const VideoItem = ({
       ]}
     >
       <PanGestureHandler
-        ref={panRef}
-        onGestureEvent={handlePanGesture}
-        onHandlerStateChange={handlePanGesture}
-        shouldCancelWhenOutside
-        activeOffsetY={[-20, 20]}
-        failOffsetX={[-50, 50]}
+        ref={panXRef}
+        onGestureEvent={handlePanGestureX}
+        onHandlerStateChange={handlePanGestureX}
+        activeOffsetX={[-20, 20]}
+        failOffsetY={[-50, 50]}
       >
-        <Animated.View style={styles.gestureContainer}>
-          <TapGestureHandler
-            ref={singleTapRef}
-            onHandlerStateChange={handleSingleTap}
-            waitFor={doubleTapRef}
+        <Animated.View style={{ flex: 1 }}>
+          <PanGestureHandler
+            ref={panRef}
+            onGestureEvent={handlePanGesture}
+            onHandlerStateChange={handlePanGesture}
+            shouldCancelWhenOutside
+            activeOffsetY={[-20, 20]}
+            failOffsetX={[-50, 50]}
           >
-            <TapGestureHandler
-              ref={doubleTapRef}
-              onHandlerStateChange={handleDoubleTap}
-              numberOfTaps={2}
-            >
-              <Animated.View style={styles.videoWrapper}>
-                {/* Enhanced Video Container */}
-                <TouchableOpacity
-                  activeOpacity={1}
-                  style={styles.touchableContainer}
-                  onPressIn={handlePressIn} 
-                  onPressOut={handlePressOut}
-                >
-
-                  <SimpleAdaptiveVideo                         
-                    videoRef={(ref) => { videoRefs.current[item.id] = ref; }}
-                    source={{ uri: item.videoUrl }}
-                    shouldPlay={isActive}
-                    isLooping={true}
-                    fillMode="smart"
-                    onLoadStart={handleVideoLoadStart}
-                    onLoad={handleVideoLoad}
-                    onError={handleVideoError} 
-                    rate={1.0}
-                    volume={1.0}
-                    onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
-                  />
-                  
-                  {/* Video Overlays */}
-                  <VideoOverlays
-                    isVideoLoading={isVideoLoading}
-                    showPlayPauseIndicator={showPlayPauseIndicator}
-                    isVideoPaused={isVideoPaused}
-                    isActive={isActive}
-                    playbackStatus={isActive ? playbackStatus : {}}
-                    isHeartAnimationVisible={isHeartAnimationVisible}
-                    onHeartAnimationEnd={onHeartAnimationEnd}
-                    videoId={item.id}
-                  />
-                  
-                  {/* Swipe indicator */}
-                  {swipeDirection && (
-                    <Animated.View 
-                      style={[
-                        styles.swipeIndicator,
-                        swipeDirection === 'up' ? styles.swipeUp : styles.swipeDown,
-                        {
-                          opacity: swipeProgressAnim.interpolate({
-                            inputRange: [0, 0.5, 1],
-                            outputRange: [0, 0.8, 1],
-                          }),
-                          transform: [{
-                            scale: swipeProgressAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0.8, 1.2],
-                            })
-                          }]
-                        }
-                      ]}
+            <Animated.View style={styles.gestureContainer}>
+              <TapGestureHandler
+                ref={singleTapRef}
+                onHandlerStateChange={handleSingleTap}
+                waitFor={doubleTapRef}
+              >
+               <TapGestureHandler
+                  ref={doubleTapRef}
+                  onHandlerStateChange={event => {
+                    // No like/heart logic here anymore
+                  }}
+                  numberOfTaps={2}
+                 >
+                  <Animated.View style={styles.videoWrapper}>
+                    {/* Enhanced Video Container */}
+                    <TouchableOpacity
+                      activeOpacity={1}
+                      style={styles.touchableContainer}
+                      onPressIn={handlePressIn}
+                      onPressOut={handlePressOut}
                     >
-                      <Animated.Text 
-                        style={[
-                          styles.swipeIndicatorText,
-                          {
-                            transform: [{
-                              translateY: swipeProgressAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [0, swipeDirection === 'up' ? -10 : 10],
-                              })
-                            }]
-                          }
-                        ]}
-                      >
-                        {swipeDirection === 'up' ? '👆 Next' : '👇 Previous'}
-                      </Animated.Text>
-                    </Animated.View>
-                  )}
-                </TouchableOpacity>
-                
-                {/* Top navigation - only show on first video or when scrolling */}
-                <EnhancedFeedHeader 
-                  activeTab={activeTab}
-                  onTabChange={onTabChange}
-                  insets={insets}
-                />
+                      {/* TikTok Loader: show when loading or offline */}
+                      {(isVideoLoading || isOffline) && (
+                        <TikTokLoader />
+                      )}
 
-                
+                      <SimpleAdaptiveVideo                         
+                        videoRef={(ref) => { videoRefs.current[item.id] = ref; }}
+                        source={{ uri: item.videoUrl }}
+                        shouldPlay={isActive}
+                        isLooping={true}
+                        fillMode="smart"
+                        onLoadStart={handleVideoLoadStart}
+                        onLoad={handleVideoLoad}
+                        onError={handleVideoError} 
+                        rate={1.0}
+                        volume={1.0}
+                        onPlaybackStatusUpdate={(status) => onPlaybackStatusUpdate(status, item.id)}
+                      />
+
+                      {/* Video Overlays */}
+                      <VideoOverlays
+                        isVideoLoading={isVideoLoading}
+                        showPlayPauseIndicator={showPlayPauseIndicator}
+                        isVideoPaused={isVideoPaused}
+                        isActive={isActive}
+                        playbackStatus={isActive ? playbackStatus : {}}
+                        isHeartAnimationVisible={isHeartAnimationVisible}
+                        onHeartAnimationEnd={onHeartAnimationEnd}
+                        videoId={item.id}
+                      />
+                      
+                      {/* Swipe indicator */}
+                      {swipeDirection && (
+                        <Animated.View 
+                          style={[
+                            styles.swipeIndicator,
+                            swipeDirection === 'up' ? styles.swipeUp : styles.swipeDown,
+                            {
+                              opacity: swipeProgressAnim.interpolate({
+                                inputRange: [0, 0.5, 1],
+                                outputRange: [0, 0.8, 1],
+                              }),
+                              transform: [{
+                                scale: swipeProgressAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [0.8, 1.2],
+                                })
+                              }]
+                            }
+                          ]}
+                        >
+                          <Animated.Text 
+                            style={[
+                              styles.swipeIndicatorText,
+                              {
+                                transform: [{
+                                  translateY: swipeProgressAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0, swipeDirection === 'up' ? -10 : 10],
+                                  })
+                                }]
+                              }
+                            ]}
+                          >
+                            {swipeDirection === 'up' ? '👆 Next' : '👇 Previous'}
+                          </Animated.Text>
+                        </Animated.View>
+                      )}
+                    </TouchableOpacity>
+                    
+                   
+
+                    
 
 
-                {/* Action Buttons - Right Side */}
-                <VideoActionButtons
-                  video={item}
-                  isBookmarked={isBookmarked}
-                  onUserProfilePress={onUserProfilePress}
-                  onLikePress={onLikeVideo}
-                  onCommentPress={onCommentPress}
-                  onBookmarkPress={onBookmarkPress}
-                  onSharePress={onSharePress}
-                />
-                
-                {/* User Info Overlay */}
-                <VideoInfo
-                  video={item}
-                  onSoundPress={onSoundPress}
-                />
-              </Animated.View>
-            </TapGestureHandler>
-          </TapGestureHandler>
+                    {/* Action Buttons - Right Side */}
+                    <VideoActionButtons
+                      video={item}
+                      isBookmarked={isBookmarked}
+                      onUserProfilePress={onUserProfilePress}
+                      onLikePress={onLikeVideo}
+                      onCommentPress={onCommentPress}
+                      onBookmarkPress={onBookmarkPress}
+                      onSharePress={onSharePress}
+                    />
+                    
+                    {/* User Info Overlay */}
+                    <VideoInfo
+                      video={item}
+                      onSoundPress={onSoundPress}
+                    />
+                  </Animated.View>
+                </TapGestureHandler>
+              </TapGestureHandler>
+            </Animated.View>
+          </PanGestureHandler>
         </Animated.View>
       </PanGestureHandler>
     </Animated.View>
