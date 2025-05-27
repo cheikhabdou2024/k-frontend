@@ -1,4 +1,4 @@
-// src/components/interactions/MagicalTransitions.js
+// src/components/interactions/MagicalTransitions.js - FIXED VERSION
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,7 +40,7 @@ const TRANSITION_CONFIG = {
   ROTATION_DEGREES: 180,
 };
 
-// Magical page transition component
+// Magical page transition component - FIXED
 export const MagicalPageTransition = ({
   children,
   transitionType = 'slide_up',
@@ -51,14 +51,14 @@ export const MagicalPageTransition = ({
   style,
   enableHaptic = true,
 }) => {
-  // Animation values
+  // FIXED: Separate native and non-native animations
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const scale = useRef(new Animated.Value(1)).current;
   const rotate = useRef(new Animated.Value(0)).current;
   
-  // Effect values
+  // FIXED: Non-native driver animations (width, height, etc.)
   const blurRadius = useRef(new Animated.Value(0)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   
@@ -152,96 +152,95 @@ export const MagicalPageTransition = ({
     }
   };
   
+  // FIXED: Separate native and non-native animations
   const createTransitionAnimations = (animatingIn) => {
     const targetValues = animatingIn ? getTargetValues() : getExitValues();
     const easing = getEasingForType();
     
-    const animations = [];
+    const nativeAnimations = [];
+    const nonNativeAnimations = [];
     
-    // Position animations
+    // FIXED: Native driver compatible animations
     if (targetValues.translateX !== undefined) {
-      animations.push(
+      nativeAnimations.push(
         Animated.timing(translateX, {
           toValue: targetValues.translateX,
           duration,
           easing,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         })
       );
     }
     
     if (targetValues.translateY !== undefined) {
-      animations.push(
+      nativeAnimations.push(
         Animated.timing(translateY, {
           toValue: targetValues.translateY,
           duration,
           easing,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         })
       );
     }
     
-    // Opacity animation
     if (targetValues.opacity !== undefined) {
-      animations.push(
+      nativeAnimations.push(
         Animated.timing(opacity, {
           toValue: targetValues.opacity,
           duration,
           easing,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         })
       );
     }
     
-    // Scale animation
     if (targetValues.scale !== undefined) {
-      animations.push(
+      nativeAnimations.push(
         Animated.spring(scale, {
           toValue: targetValues.scale,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
           tension: 100,
           friction: 8,
         })
       );
     }
     
-    // Rotation animation
     if (targetValues.rotate !== undefined) {
-      animations.push(
+      nativeAnimations.push(
         Animated.timing(rotate, {
           toValue: targetValues.rotate,
           duration,
           easing,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         })
       );
     }
     
-    // Blur animation (for magical effect)
+    // FIXED: Non-native driver animations
     if (targetValues.blurRadius !== undefined) {
-      animations.push(
+      nonNativeAnimations.push(
         Animated.timing(blurRadius, {
           toValue: targetValues.blurRadius,
           duration: duration * 0.7,
           easing: TRANSITION_CONFIG.EASINGS.QUICK,
-          useNativeDriver: false,
+          useNativeDriver: false, // Blur radius doesn't work with native driver
         })
       );
     }
     
-    // Overlay animation
     if (targetValues.overlayOpacity !== undefined) {
-      animations.push(
+      nativeAnimations.push(
         Animated.timing(overlayOpacity, {
           toValue: targetValues.overlayOpacity,
           duration: duration * 0.5,
           easing: TRANSITION_CONFIG.EASINGS.QUICK,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         })
       );
     }
     
-    return animations;
+    // Return all animations together
+    return [...nativeAnimations, ...nonNativeAnimations];
   };
   
   const getTargetValues = () => {
@@ -341,7 +340,7 @@ export const MagicalPageTransition = ({
   );
 };
 
-// Video swipe transition component
+// Video swipe transition component - FIXED
 export const VideoSwipeTransition = ({
   direction = 'up',
   progress = 0,
@@ -350,53 +349,61 @@ export const VideoSwipeTransition = ({
   onTransitionComplete,
   style,
 }) => {
-  const translateAnim = useRef(new Animated.Value(0)).current;
+  // FIXED: Use separate values that don't conflict
+  const currentTranslateAnim = useRef(new Animated.Value(0)).current;
+  const nextTranslateAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
   
   useEffect(() => {
-    // Animate based on progress
+    // FIXED: Animate based on progress with native driver
+    const currentTranslateValue = direction === 'up' || direction === 'down' 
+      ? SCREEN_HEIGHT * progress * (direction === 'up' ? -1 : 1)
+      : SCREEN_WIDTH * progress * (direction === 'left' ? -1 : 1);
+      
+    const nextTranslateValue = direction === 'up' || direction === 'down' 
+      ? SCREEN_HEIGHT * (1 - progress) * (direction === 'up' ? 1 : -1)
+      : SCREEN_WIDTH * (1 - progress) * (direction === 'left' ? 1 : -1);
+    
+    // FIXED: Use timing with duration 0 for immediate updates
     Animated.parallel([
-      Animated.timing(translateAnim, {
-        toValue: progress,
-        duration: 0, // Immediate update
+      Animated.timing(currentTranslateAnim, {
+        toValue: currentTranslateValue,
+        duration: 0,
+        useNativeDriver: true,
+      }),
+      Animated.timing(nextTranslateAnim, {
+        toValue: nextTranslateValue,
+        duration: 0,
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
-        toValue: 1 - (progress * 0.1), // Slight scale effect
+        toValue: 1 - (progress * 0.1),
         duration: 0,
         useNativeDriver: true,
       }),
       Animated.timing(opacityAnim, {
-        toValue: 1 - (progress * 0.3), // Fade effect
+        toValue: 1 - (progress * 0.3),
         duration: 0,
         useNativeDriver: true,
       }),
     ]).start();
-  }, [progress]);
+  }, [progress, direction]);
   
-  // Calculate transforms based on direction
+  // FIXED: Calculate transforms properly
   const getCurrentVideoTransform = () => {
-    const translateDistance = direction === 'up' || direction === 'down' 
-      ? SCREEN_HEIGHT * progress * (direction === 'up' ? -1 : 1)
-      : SCREEN_WIDTH * progress * (direction === 'left' ? -1 : 1);
-    
     if (direction === 'up' || direction === 'down') {
-      return [{ translateY: translateDistance }, { scale: scaleAnim }];
+      return [{ translateY: currentTranslateAnim }, { scale: scaleAnim }];
     } else {
-      return [{ translateX: translateDistance }, { scale: scaleAnim }];
+      return [{ translateX: currentTranslateAnim }, { scale: scaleAnim }];
     }
   };
   
   const getNextVideoTransform = () => {
-    const translateDistance = direction === 'up' || direction === 'down' 
-      ? SCREEN_HEIGHT * (1 - progress) * (direction === 'up' ? 1 : -1)
-      : SCREEN_WIDTH * (1 - progress) * (direction === 'left' ? 1 : -1);
-    
     if (direction === 'up' || direction === 'down') {
-      return [{ translateY: translateDistance }];
+      return [{ translateY: nextTranslateAnim }];
     } else {
-      return [{ translateX: translateDistance }];
+      return [{ translateX: nextTranslateAnim }];
     }
   };
   
@@ -441,7 +448,7 @@ export const VideoSwipeTransition = ({
   );
 };
 
-// Particle transition effect
+// Particle transition effect - FIXED
 export const ParticleTransition = ({
   isActive = false,
   particleCount = 20,
@@ -467,6 +474,7 @@ export const ParticleTransition = ({
         x: (Math.random() - 0.5) * 200,
         y: (Math.random() - 0.5) * 200,
       },
+      // FIXED: Separate animation values for each particle
       opacity: new Animated.Value(0),
       scale: new Animated.Value(0),
       translateX: new Animated.Value(0),
@@ -479,41 +487,41 @@ export const ParticleTransition = ({
     newParticles.forEach((particle, index) => {
       const delay = index * 50;
       
-      // Entrance animation
+      // FIXED: Entrance animation with native driver
       Animated.parallel([
         Animated.timing(particle.opacity, {
           toValue: 1,
           duration: 300,
           delay,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         }),
         Animated.spring(particle.scale, {
           toValue: 1,
           delay,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
           tension: 100,
           friction: 8,
         }),
       ]).start();
       
-      // Movement animation
+      // FIXED: Movement animation with native driver
       setTimeout(() => {
         Animated.parallel([
           Animated.timing(particle.translateX, {
             toValue: particle.velocity.x,
             duration: 2000,
-            useNativeDriver: true,
+            useNativeDriver: true, // Transform works with native driver
           }),
           Animated.timing(particle.translateY, {
             toValue: particle.velocity.y,
             duration: 2000,
-            useNativeDriver: true,
+            useNativeDriver: true, // Transform works with native driver
           }),
           Animated.timing(particle.opacity, {
             toValue: 0,
             duration: 1000,
             delay: 1000,
-            useNativeDriver: true,
+            useNativeDriver: true, // Opacity works with native driver
           }),
         ]).start();
       }, delay + 300);
@@ -556,7 +564,7 @@ export const ParticleTransition = ({
   );
 };
 
-// Magical reveal transition
+// Magical reveal transition - FIXED
 export const MagicalReveal = ({
   isRevealing = false,
   revealType = 'circle',
@@ -564,9 +572,11 @@ export const MagicalReveal = ({
   children,
   onRevealComplete,
 }) => {
-  const revealAnim = useRef(new Animated.Value(0)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  // FIXED: Separate native and non-native animations
+  const revealScale = useRef(new Animated.Value(0)).current; // For size changes (non-native)
+  const rotateAnim = useRef(new Animated.Value(0)).current; // For rotation (native)
+  const scaleAnim = useRef(new Animated.Value(0.8)).current; // For transform scale (native)
+  const opacityAnim = useRef(new Animated.Value(0)).current; // For opacity (native)
   
   useEffect(() => {
     if (isRevealing) {
@@ -577,56 +587,75 @@ export const MagicalReveal = ({
   }, [isRevealing]);
   
   const startReveal = () => {
-    Animated.parallel([
-      Animated.timing(revealAnim, {
-        toValue: 1,
-        duration,
-        easing: TRANSITION_CONFIG.EASINGS.ELASTIC,
-        useNativeDriver: false,
-      }),
+    // FIXED: Separate native and non-native animations
+    const nativeAnimations = [
       Animated.timing(rotateAnim, {
         toValue: 1,
         duration: duration * 1.2,
         easing: TRANSITION_CONFIG.EASINGS.SMOOTH,
-        useNativeDriver: true,
+        useNativeDriver: true, // Transform works with native driver
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        useNativeDriver: true,
+        useNativeDriver: true, // Transform works with native driver
         tension: 80,
         friction: 8,
       }),
-    ]).start(() => {
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: duration * 0.8,
+        useNativeDriver: true, // Opacity works with native driver
+      })
+    ];
+    
+    const nonNativeAnimations = [
+      Animated.timing(revealScale, {
+        toValue: 1,
+        duration,
+        easing: TRANSITION_CONFIG.EASINGS.ELASTIC,
+        useNativeDriver: false, // Size changes don't work with native driver
+      })
+    ];
+    
+    // Run all animations together
+    Animated.parallel([...nativeAnimations, ...nonNativeAnimations]).start(() => {
       if (onRevealComplete) onRevealComplete();
     });
   };
   
   const hideReveal = () => {
+    // FIXED: Separate animations for hiding
     Animated.parallel([
-      Animated.timing(revealAnim, {
+      Animated.timing(revealScale, {
         toValue: 0,
         duration: duration * 0.6,
-        useNativeDriver: false,
+        useNativeDriver: false, // Size changes don't work with native driver
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.8,
         duration: duration * 0.6,
-        useNativeDriver: true,
+        useNativeDriver: true, // Transform works with native driver
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: duration * 0.6,
+        useNativeDriver: true, // Opacity works with native driver
       }),
     ]).start();
   };
   
+  // FIXED: Calculate mask style with separate scale value
   const getMaskStyle = () => {
     const maxRadius = Math.sqrt(SCREEN_WIDTH ** 2 + SCREEN_HEIGHT ** 2);
     
     switch (revealType) {
       case 'circle':
         return {
-          width: revealAnim.interpolate({
+          width: revealScale.interpolate({
             inputRange: [0, 1],
             outputRange: [0, maxRadius * 2],
           }),
-          height: revealAnim.interpolate({
+          height: revealScale.interpolate({
             inputRange: [0, 1],
             outputRange: [0, maxRadius * 2],
           }),
@@ -634,11 +663,11 @@ export const MagicalReveal = ({
         };
       case 'square':
         return {
-          width: revealAnim.interpolate({
+          width: revealScale.interpolate({
             inputRange: [0, 1],
             outputRange: [0, SCREEN_WIDTH],
           }),
-          height: revealAnim.interpolate({
+          height: revealScale.interpolate({
             inputRange: [0, 1],
             outputRange: [0, SCREEN_HEIGHT],
           }),
@@ -655,6 +684,7 @@ export const MagicalReveal = ({
           styles.revealMask,
           getMaskStyle(),
           {
+            opacity: opacityAnim,
             transform: [
               { scale: scaleAnim },
               { 

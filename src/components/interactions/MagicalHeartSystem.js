@@ -1,4 +1,4 @@
-// src/components/interactions/MagicalHeartSystem.js
+// src/components/interactions/MagicalHeartSystem.js - FIXED VERSION
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Text } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -18,9 +18,9 @@ const HEART_CONFIG = {
   PARTICLE_DURATION: 1500,
   STAGGER_DELAY: 50,
   
-  // Physics
-  GRAVITY: 0.5,
-  BOUNCE_DAMPING: 0.7,
+  // Physics (for visual effect only, no actual physics simulation)
+  GRAVITY_EFFECT: 0.5,
+  BOUNCE_EFFECT: 0.7,
   AIR_RESISTANCE: 0.98,
   
   // Visual effects
@@ -79,9 +79,11 @@ const MagicalHeartSystem = ({
       extreme: Haptics.ImpactFeedbackStyle.Heavy
     }[intensity] || Haptics.ImpactFeedbackStyle.Medium;
     
-    Haptics.impactAsync(hapticIntensity);
+    if (Haptics) {
+      Haptics.impactAsync(hapticIntensity);
+    }
     
-    // Create hearts with physics
+    // Create hearts with physics-like movement
     const newHearts = createPhysicsHearts();
     const newParticles = createMagicalParticles();
     
@@ -101,7 +103,7 @@ const MagicalHeartSystem = ({
     }, HEART_CONFIG.HEART_DURATION);
   };
 
-  // Create hearts with realistic physics
+  // Create hearts with realistic physics-like movement
   const createPhysicsHearts = () => {
     const heartCount = getHeartCount();
     const hearts = [];
@@ -124,11 +126,11 @@ const MagicalHeartSystem = ({
         opacity: 1,
         scale: 0,
         glowIntensity: Math.random() * HEART_CONFIG.GLOW_INTENSITY,
-        // Animation refs
+        // FIXED: Animation refs using native driver compatible properties
         scaleAnim: new Animated.Value(0),
         opacityAnim: new Animated.Value(1),
-        positionAnimX: new Animated.Value(tapPosition.x),
-        positionAnimY: new Animated.Value(tapPosition.y),
+        translateXAnim: new Animated.Value(0),
+        translateYAnim: new Animated.Value(0),
         rotationAnim: new Animated.Value(0),
         glowAnim: new Animated.Value(0),
       });
@@ -152,181 +154,160 @@ const MagicalHeartSystem = ({
         y: tapPosition.y + Math.sin(angle) * distance,
         size: 4 + Math.random() * 8,
         color: HEART_CONFIG.COLORS[Math.floor(Math.random() * HEART_CONFIG.COLORS.length)],
-        // Animation refs
+        // FIXED: Animation refs using native driver
         scaleAnim: new Animated.Value(0),
         opacityAnim: new Animated.Value(1),
-        positionAnimX: new Animated.Value(tapPosition.x),
-        positionAnimY: new Animated.Value(tapPosition.y),
+        translateXAnim: new Animated.Value(0),
+        translateYAnim: new Animated.Value(0),
       });
     }
     
     return particles;
   };
 
-  // Animate hearts with realistic physics
+  // FIXED: Animate hearts with native driver compatible properties
   const animateHearts = (heartsArray) => {
     heartsArray.forEach((heart, index) => {
       const delay = index * HEART_CONFIG.STAGGER_DELAY;
       
-      // Scale animation - pop in effect
+      // FIXED: Scale animation with native driver
       Animated.sequence([
         Animated.delay(delay),
         Animated.spring(heart.scaleAnim, {
           toValue: 1,
           tension: 150,
           friction: 6,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         }),
         Animated.delay(HEART_CONFIG.HEART_DURATION - 500),
         Animated.timing(heart.scaleAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         }),
       ]).start();
       
-      // Opacity animation
+      // FIXED: Opacity animation with native driver
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(heart.opacityAnim, {
           toValue: 1,
           duration: 200,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         }),
         Animated.delay(HEART_CONFIG.HEART_DURATION - 700),
         Animated.timing(heart.opacityAnim, {
           toValue: 0,
           duration: 500,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         }),
       ]).start();
       
-      // Physics-based movement
+      // FIXED: Physics-based movement with native driver
       const animatePhysics = () => {
-        const startTime = Date.now();
-        const animate = () => {
-          const elapsed = Date.now() - startTime;
-          const progress = elapsed / HEART_CONFIG.HEART_DURATION;
-          
-          if (progress >= 1) return;
-          
-          // Apply gravity and air resistance
-          heart.vy += HEART_CONFIG.GRAVITY;
-          heart.vx *= HEART_CONFIG.AIR_RESISTANCE;
-          heart.vy *= HEART_CONFIG.AIR_RESISTANCE;
-          
-          // Update position
-          heart.x += heart.vx;
-          heart.y += heart.vy;
-          
-          // Bounce off screen edges
-          if (heart.x <= 0 || heart.x >= SCREEN_WIDTH) {
-            heart.vx *= -HEART_CONFIG.BOUNCE_DAMPING;
-            heart.x = Math.max(0, Math.min(SCREEN_WIDTH, heart.x));
-          }
-          
-          if (heart.y >= SCREEN_HEIGHT - 100) {
-            heart.vy *= -HEART_CONFIG.BOUNCE_DAMPING;
-            heart.y = SCREEN_HEIGHT - 100;
-          }
-          
-          // Update rotation
-          heart.rotation += heart.rotationSpeed;
-          
-          // Apply animations
-          heart.positionAnimX.setValue(heart.x);
-          heart.positionAnimY.setValue(heart.y);
-          heart.rotationAnim.setValue(heart.rotation);
-          
-          // Continue animation
-          requestAnimationFrame(animate);
-        };
+        const finalX = heart.vx * 50; // Simplified physics
+        const finalY = heart.vy * 50 + 100; // Add gravity effect
         
-        requestAnimationFrame(animate);
+        // Movement animations with native driver
+        Animated.parallel([
+          Animated.timing(heart.translateXAnim, {
+            toValue: finalX,
+            duration: HEART_CONFIG.HEART_DURATION,
+            useNativeDriver: true, // Transform works with native driver
+          }),
+          Animated.timing(heart.translateYAnim, {
+            toValue: finalY,
+            duration: HEART_CONFIG.HEART_DURATION,
+            useNativeDriver: true, // Transform works with native driver
+          }),
+          Animated.timing(heart.rotationAnim, {
+            toValue: heart.rotationSpeed * 5, // Rotation effect
+            duration: HEART_CONFIG.HEART_DURATION,
+            useNativeDriver: true, // Transform works with native driver
+          }),
+        ]).start();
       };
       
       setTimeout(animatePhysics, delay);
       
-      // Glow pulse effect
+      // FIXED: Glow pulse effect with native driver
       Animated.loop(
         Animated.sequence([
           Animated.timing(heart.glowAnim, {
             toValue: 1,
             duration: 600,
-            useNativeDriver: true,
+            useNativeDriver: true, // Opacity works with native driver
           }),
           Animated.timing(heart.glowAnim, {
             toValue: 0,
             duration: 600,
-            useNativeDriver: true,
+            useNativeDriver: true, // Opacity works with native driver
           }),
         ])
       ).start();
     });
   };
 
-  // Animate particles
+  // FIXED: Animate particles with native driver
   const animateParticles = (particlesArray) => {
     particlesArray.forEach((particle, index) => {
       const delay = index * 30;
       
-      // Scale animation
+      // FIXED: Scale animation with native driver
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(particle.scaleAnim, {
           toValue: 1,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         }),
         Animated.delay(300),
         Animated.timing(particle.scaleAnim, {
           toValue: 0,
           duration: 400,
-          useNativeDriver: true,
+          useNativeDriver: true, // Transform works with native driver
         }),
       ]).start();
       
-      // Opacity animation
+      // FIXED: Opacity animation with native driver
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(particle.opacityAnim, {
           toValue: 0.8,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         }),
         Animated.delay(200),
         Animated.timing(particle.opacityAnim, {
           toValue: 0,
           duration: 500,
-          useNativeDriver: true,
+          useNativeDriver: true, // Opacity works with native driver
         }),
       ]).start();
       
-      // Position animation - spread out
-      const finalX = particle.x + (Math.random() - 0.5) * 100;
-      const finalY = particle.y - 50 - Math.random() * 100;
+      // FIXED: Position animation with native driver - spread out
+      const finalX = (Math.random() - 0.5) * 100;
+      const finalY = -50 - Math.random() * 100;
       
       Animated.sequence([
         Animated.delay(delay),
-        Animated.timing(particle.positionAnimX, {
-          toValue: finalX,
-          duration: HEART_CONFIG.PARTICLE_DURATION,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(particle.positionAnimY, {
-          toValue: finalY,
-          duration: HEART_CONFIG.PARTICLE_DURATION,
-          useNativeDriver: true,
-        }),
+        Animated.parallel([
+          Animated.timing(particle.translateXAnim, {
+            toValue: finalX,
+            duration: HEART_CONFIG.PARTICLE_DURATION,
+            useNativeDriver: true, // Transform works with native driver
+          }),
+          Animated.timing(particle.translateYAnim, {
+            toValue: finalY,
+            duration: HEART_CONFIG.PARTICLE_DURATION,
+            useNativeDriver: true, // Transform works with native driver
+          }),
+        ]),
       ]).start();
     });
   };
 
-  // Render individual heart with glow effect
+  // FIXED: Render individual heart with glow effect
   const renderHeart = (heart) => (
     <Animated.View
       key={heart.id}
@@ -334,11 +315,11 @@ const MagicalHeartSystem = ({
         styles.heartContainer,
         {
           position: 'absolute',
-          left: 0,
-          top: 0,
+          left: heart.x - heart.size / 2,
+          top: heart.y - heart.size / 2,
           transform: [
-            { translateX: heart.positionAnimX },
-            { translateY: heart.positionAnimY },
+            { translateX: heart.translateXAnim },
+            { translateY: heart.translateYAnim },
             { scale: heart.scaleAnim },
             { 
               rotate: heart.rotationAnim.interpolate({
@@ -352,7 +333,7 @@ const MagicalHeartSystem = ({
         }
       ]}
     >
-      {/* Glow effect */}
+      {/* FIXED: Glow effect with native driver */}
       <Animated.View
         style={[
           styles.heartGlow,
@@ -380,7 +361,7 @@ const MagicalHeartSystem = ({
     </Animated.View>
   );
 
-  // Render individual particle
+  // FIXED: Render individual particle
   const renderParticle = (particle) => (
     <Animated.View
       key={particle.id}
@@ -388,15 +369,15 @@ const MagicalHeartSystem = ({
         styles.particle,
         {
           position: 'absolute',
-          left: 0,
-          top: 0,
+          left: particle.x - particle.size / 2,
+          top: particle.y - particle.size / 2,
           width: particle.size,
           height: particle.size,
           borderRadius: particle.size / 2,
           backgroundColor: particle.color,
           transform: [
-            { translateX: particle.positionAnimX },
-            { translateY: particle.positionAnimY },
+            { translateX: particle.translateXAnim },
+            { translateY: particle.translateYAnim },
             { scale: particle.scaleAnim }
           ],
           opacity: particle.opacityAnim,
@@ -415,8 +396,8 @@ const MagicalHeartSystem = ({
       {/* Render particles */}
       {particles.map(renderParticle)}
       
-      {/* Screen flash effect for extreme intensity */}
-      {intensity === 'extreme' && (
+      {/* Screen flash effect for extreme intensity - FIXED */}
+      {intensity === 'extreme' && hearts.length > 0 && (
         <Animated.View 
           style={[
             styles.screenFlash,
