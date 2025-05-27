@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Navigation from './src/navigation';
+
 import SplashScreen from './src/screens/auth/SplashScreen';
 import OnboardingScreen from './src/screens/auth/OnboardingScreen';
 import InterestsScreen from './src/screens/auth/InterestsScreen';
-import EnhancedFeedScreen from './src/screens/feed/EnhancedFeedScreen';
+import PerfectFeedScreen from './src/screens/feed/PerfectFeedScreen';
 import * as storage from './src/utils/storage';
 
 export default function App() {
@@ -56,6 +57,7 @@ export default function App() {
 
   // Maintenant que l'onboarding et les intérêts sont complétés, afficher l'écran principal
   return (
+
     <SafeAreaProvider>
        <Navigation />
       <StatusBar style="light" />

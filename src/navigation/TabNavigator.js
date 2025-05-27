@@ -6,7 +6,7 @@ import ProfileNavigator from './ProfileNavigator';
 
 
 // Import screens
-import FeedScreen from '../screens/feed/EnhancedFeedScreen';
+import PerfectFeedScreen from '../screens/feed/PerfectFeedScreen';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import InboxScreen from '../screens/inbox/InboxScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
@@ -101,7 +101,7 @@ const TabNavigator = () => {
     >
       <Tab.Screen 
         name={TABS.HOME} 
-        component={FeedScreen}
+        component={PerfectFeedScreen}
         options={{ tabBarLabel: 'Home' }}
       />
       <Tab.Screen 

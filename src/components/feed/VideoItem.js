@@ -1,18 +1,16 @@
 // src/components/feed/VideoItem.js - Updated with Adaptive Video
 import React, { useRef, useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, Text } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, Text, Modal } from 'react-native';
 import SimpleAdaptiveVideo from '../video/SimpleAdaptiveVideo'; // Using the simple version
 import { PanGestureHandler, TapGestureHandler, State } from 'react-native-gesture-handler';
 import VideoOverlays from './VideoOverlays';
 import VideoActionButtons from './VideoActionButton';
 import VideoInfo from './VideoInfo';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; 
 import NetInfo from '@react-native-community/netinfo';
 import TikTokLoader from '../loading/TikTokLoader';
 import EnhancedHeartAnimation from './EnhancedHeartAnimation'; // Updated import
 
-
- 
 const { width, height } = Dimensions.get('window');
 
 const VideoItem = ({
@@ -263,6 +261,13 @@ const VideoItem = ({
     }).start();
   };
 
+  const handleSharePress = async () => {
+    const token = await AsyncStorage.getItem('@auth_token');
+    // If authenticated, call the original onSharePress if provided
+    if (onSharePress) onSharePress(item);
+  };
+
+  
 
   return (
    <Animated.View 
@@ -418,7 +423,7 @@ const VideoItem = ({
                       }}
                       onCommentPress={onCommentPress}
                       onBookmarkPress={onBookmarkPress}
-                      onSharePress={onSharePress}
+                      onSharePress={handleSharePress} // <-- use the new handler
                     />
                     
                     {/* User Info Overlay */}
@@ -433,6 +438,8 @@ const VideoItem = ({
           </PanGestureHandler>
         </Animated.View>
       </PanGestureHandler>
+
+     
     </Animated.View>
   );
 };
