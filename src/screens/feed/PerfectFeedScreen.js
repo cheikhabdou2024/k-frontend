@@ -1,4 +1,4 @@
-// src/screens/feed/PerfectFeedScreen.js - FIXED VERSION
+// src/screens/feed/PerfectFeedScreen.js - UPDATED WITH SOUNDWAVE VISUALIZER
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   View, 
@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { TapGestureHandler, State } from 'react-native-gesture-handler'; // Added import
+import { TapGestureHandler, State } from 'react-native-gesture-handler';
 
 // Components
 import PerfectAdaptiveVideo from '../../components/video/PerfectAdaptiveVideo';
@@ -25,6 +25,7 @@ import VideoActionButtons from '../../components/feed/VideoActionButton';
 import VideoInfo from '../../components/feed/VideoInfo';
 import EnhancedFeedHeader, { FEED_TYPES } from '../../components/feed/EnhancedFeedHeader';
 import MagicalHeartSystem from '../../components/interactions/MagicalHeartSystem';
+import SoundWaveVisualizer from '../../components/interactions/SoundWaveVisualizer'; // NEW IMPORT
 
 // Services & Utils
 import FeedService from '../../services/FeedService';
@@ -54,6 +55,10 @@ const PERFECT_FEED_CONFIG = {
   // Animation settings
   TRANSITION_DURATION: 250,
   HAPTIC_FEEDBACK_ENABLED: true,
+  
+  // NEW: Sound wave settings
+  SOUND_WAVE_TRIGGER_THRESHOLD: 0.7, // Show sound waves when volume > 70%
+  SOUND_WAVE_SENSITIVITY: 'medium',
 };
 
 const PerfectFeedScreen = () => {
@@ -67,6 +72,11 @@ const PerfectFeedScreen = () => {
   const [apiStatus, setApiStatus] = useState('loading');
   const [lastTapPosition, setLastTapPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
   
+  // NEW: Sound wave visualization state
+  const [soundWaveStates, setSoundWaveStates] = useState({});
+  const [currentVideoVolume, setCurrentVideoVolume] = useState(1.0);
+  const [isCurrentVideoPlaying, setIsCurrentVideoPlaying] = useState(false);
+  
   // Performance state
   const [renderingPerformance, setRenderingPerformance] = useState({
     fps: 60,
@@ -74,10 +84,10 @@ const PerfectFeedScreen = () => {
     memoryUsage: 0
   });
   
-  // Heart animation state - Updated for MagicalHeartSystem
+  // Heart animation state
   const [heartAnimations, setHeartAnimations] = useState({});
-  const [heartAnimationQueue, setHeartAnimationQueue] = useState([]); // Queue for multiple animations
-  const [heartAnimationCounter, setHeartAnimationCounter] = useState(0); // Unique ID for each animation
+  const [heartAnimationQueue, setHeartAnimationQueue] = useState([]);
+  const [heartAnimationCounter, setHeartAnimationCounter] = useState(0);
   
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -89,7 +99,11 @@ const PerfectFeedScreen = () => {
   const performanceMonitorRef = useRef(null);
   const gestureStartTime = useRef(0);
   const lastTapTime = useRef(0);
-  const doubleTapRef = useRef(); // Added for double tap gesture
+  const doubleTapRef = useRef();
+  
+  // NEW: Sound wave refs
+  const soundWaveRefs = useRef({});
+  const volumeAnalysisInterval = useRef(null);
   
   // Animation refs
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -115,16 +129,13 @@ const PerfectFeedScreen = () => {
       },
       
       onPanResponderMove: (evt, gestureState) => {
-        // Visual feedback during gesture
         const progress = Math.min(Math.abs(gestureState.dx) / width, 1);
         tabTransitionAnim.setValue(progress);
       },
       
       onPanResponderRelease: (evt, gestureState) => {
         const { dx, dy, vx, vy } = gestureState;
-        const gestureTime = Date.now() - gestureStartTime.current;
         
-        // Reset transition animation
         Animated.spring(tabTransitionAnim, {
           toValue: 0,
           useNativeDriver: true,
@@ -154,10 +165,12 @@ const PerfectFeedScreen = () => {
   useEffect(() => {
     loadInitialVideos();
     startPerformanceMonitoring();
+    startVolumeAnalysis(); // NEW: Start volume analysis
     
     return () => {
       videoQueueManager.reset();
       stopPerformanceMonitoring();
+      stopVolumeAnalysis(); // NEW: Stop volume analysis
     };
   }, []);
 
@@ -168,24 +181,56 @@ const PerfectFeedScreen = () => {
     }
   }, [videos, currentIndex]);
 
+  // NEW: Start volume analysis for sound wave visualization
+  const startVolumeAnalysis = () => {
+    volumeAnalysisInterval.current = setInterval(() => {
+      if (isCurrentVideoPlaying && currentVideoRef.current) {
+        // Simulate volume analysis (in a real app, you'd get this from audio context)
+        const mockVolume = 0.3 + Math.random() * 0.7; // Random volume between 0.3-1.0
+        setCurrentVideoVolume(mockVolume);
+        
+        // Update sound wave state for current video
+        const currentVideo = videos[currentIndex];
+        if (currentVideo) {
+          setSoundWaveStates(prev => ({
+            ...prev,
+            [currentVideo.id]: {
+              isActive: mockVolume > PERFECT_FEED_CONFIG.SOUND_WAVE_TRIGGER_THRESHOLD,
+              intensity: mockVolume > 0.8 ? 'high' : mockVolume > 0.5 ? 'medium' : 'low'
+            }
+          }));
+        }
+      }
+    }, 100); // Update every 100ms for smooth visualization
+  };
+
+  // NEW: Stop volume analysis
+  const stopVolumeAnalysis = () => {
+    if (volumeAnalysisInterval.current) {
+      clearInterval(volumeAnalysisInterval.current);
+      volumeAnalysisInterval.current = null;
+    }
+  };
+
   // Handle app state changes
   useFocusEffect(
     useCallback(() => {
       const handleAppStateChange = (nextAppState) => {
         if (nextAppState === 'active') {
-          // Resume video and preloading
           playCurrentVideo();
+          startVolumeAnalysis(); // NEW: Resume volume analysis
         } else {
-          // Pause all videos
           pauseAllVideos();
+          stopVolumeAnalysis(); // NEW: Pause volume analysis
+          
+          // Reset sound wave states when app goes to background
+          setSoundWaveStates({});
         }
       };
 
       const subscription = AppState.addEventListener('change', handleAppStateChange);
       
-      // Handle Android back button
       const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-        // Let the default behavior handle it
         return false;
       });
 
@@ -234,7 +279,6 @@ const PerfectFeedScreen = () => {
       
       const loadedVideos = await FeedService.loadVideos();
       
-      // Determine if we got real API data
       const isApiData = loadedVideos.some(video => 
         video.videoUrl && (video.videoUrl.includes('pixabay') || video.videoUrl.includes('localhost'))
       );
@@ -244,7 +288,6 @@ const PerfectFeedScreen = () => {
       
       console.log(`📱 Loaded ${loadedVideos.length} videos from ${isApiData ? 'API' : 'mock data'}`);
       
-      // Start playing the first video
       if (loadedVideos.length > 0) {
         setTimeout(() => playCurrentVideo(), 500);
       }
@@ -303,7 +346,9 @@ const PerfectFeedScreen = () => {
       setVideos(newVideos);
       setCurrentIndex(0);
       
-      // Reset to first video
+      // Reset sound wave states for new videos
+      setSoundWaveStates({});
+      
       if (flatListRef.current && newVideos.length > 0) {
         flatListRef.current.scrollToIndex({ 
           index: 0, 
@@ -332,6 +377,8 @@ const PerfectFeedScreen = () => {
     const currentVideo = videos[currentIndex];
     if (currentVideo && videoRefs.current[currentVideo.id]) {
       videoRefs.current[currentVideo.id].playAsync();
+      setIsCurrentVideoPlaying(true);
+      currentVideoRef.current = videoRefs.current[currentVideo.id];
     }
   };
 
@@ -339,9 +386,11 @@ const PerfectFeedScreen = () => {
   const pauseAllVideos = () => {
     Object.values(videoRefs.current).forEach(videoRef => {
       if (videoRef) {
-        videoRef.pauseAsync().catch(() => {}); // Ignore errors
+        videoRef.pauseAsync().catch(() => {});
       }
     });
+    setIsCurrentVideoPlaying(false);
+    currentVideoRef.current = null;
   };
 
   // Handle viewability changes
@@ -352,7 +401,8 @@ const PerfectFeedScreen = () => {
         setCurrentIndex(newIndex);
         videoQueueManager.updateCurrentIndex(newIndex);
         
-        // Pause all videos except the current one
+        // Reset sound wave states and pause all videos
+        setSoundWaveStates({});
         pauseAllVideos();
         
         // Play current video after a brief delay
@@ -368,17 +418,15 @@ const PerfectFeedScreen = () => {
     waitForInteraction: false,
   };
 
-  // FIXED: Enhanced double tap handler for MagicalHeartSystem
+  // Enhanced double tap handler for MagicalHeartSystem
   const handleDoubleTap = (event) => {
     if (event.nativeEvent.state === State.ACTIVE) {
-      console.log('🎉 Double tap triggered!'); // Debug log
+      console.log('🎉 Double tap triggered!');
       
-      // Get tap position from the event
       const tapX = event.nativeEvent.absoluteX || event.nativeEvent.x || SCREEN_WIDTH / 2;
       const tapY = event.nativeEvent.absoluteY || event.nativeEvent.y || SCREEN_HEIGHT / 2;
       setLastTapPosition({ x: tapX, y: tapY });
 
-      // Create a new heart animation with unique ID
       const newHeartAnimation = {
         id: `heart_${Date.now()}_${heartAnimationCounter}`,
         position: { x: tapX, y: tapY },
@@ -386,29 +434,23 @@ const PerfectFeedScreen = () => {
         timestamp: Date.now()
       };
       
-      // Add to animation queue
       setHeartAnimationQueue(prev => [...prev, newHeartAnimation]);
       setHeartAnimationCounter(prev => prev + 1);
       
-      // Haptic feedback
       if (PERFECT_FEED_CONFIG.HAPTIC_FEEDBACK_ENABLED) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       }
       
-      // Also trigger like action
       const currentVideo = videos[currentIndex];
       if (currentVideo) {
         console.log('❤️ Liking video:', currentVideo.id);
-        // You can add your like logic here
       }
     }
   };
 
   // Handle magical heart animation end
   const handleMagicalHeartAnimationEnd = (heartId) => {
-    console.log('🎉 Magical heart animation ended:', heartId); // Debug log
-    
-    // Remove the completed animation from queue
+    console.log('🎉 Magical heart animation ended:', heartId);
     setHeartAnimationQueue(prev => prev.filter(heart => heart.id !== heartId));
   };
 
@@ -421,10 +463,11 @@ const PerfectFeedScreen = () => {
       setVideos(refreshedVideos);
       setCurrentIndex(0);
       
-      // Reset video queue
+      // Reset sound wave states
+      setSoundWaveStates({});
+      
       videoQueueManager.setVideoQueue(refreshedVideos, 0);
       
-      // Scroll to top
       if (flatListRef.current && refreshedVideos.length > 0) {
         flatListRef.current.scrollToIndex({ index: 0, animated: true });
       }
@@ -435,14 +478,33 @@ const PerfectFeedScreen = () => {
     }
   };
 
-  // UPDATED: Render individual video item with proper gesture handling
+  // NEW: Handle sound wave press (when user taps on sound waves)
+  const handleSoundWavePress = (videoId) => {
+    console.log('🎵 Sound wave pressed for video:', videoId);
+    
+    // Toggle sound wave intensity or trigger special effect
+    setSoundWaveStates(prev => ({
+      ...prev,
+      [videoId]: {
+        ...prev[videoId],
+        intensity: prev[videoId]?.intensity === 'extreme' ? 'high' : 'extreme'
+      }
+    }));
+    
+    // Light haptic feedback
+    if (PERFECT_FEED_CONFIG.HAPTIC_FEEDBACK_ENABLED) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  // UPDATED: Render individual video item with SoundWaveVisualizer
   const renderVideoItem = useCallback(({ item, index }) => {
     const isActive = index === currentIndex;
-    const isHeartAnimationVisible = heartAnimations[item.id] || false;
+    const soundWaveState = soundWaveStates[item.id];
     
     return (
       <View style={styles.videoItemContainer}>
-        {/* Double Tap Gesture Handler - FIXED */}
+        {/* Double Tap Gesture Handler */}
         <TapGestureHandler
           ref={doubleTapRef}
           onHandlerStateChange={handleDoubleTap}
@@ -467,14 +529,29 @@ const PerfectFeedScreen = () => {
           </View>
         </TapGestureHandler>
         
+        {/* NEW: Sound Wave Visualizer */}
+        {isActive && soundWaveState?.isActive && (
+          <View style={styles.soundWaveContainer}>
+            <SoundWaveVisualizer
+              ref={(ref) => { soundWaveRefs.current[item.id] = ref; }}
+              isActive={true}
+              intensity={soundWaveState.intensity}
+              size="medium"
+              onWaveComplete={() => console.log('🌊 Wave animation complete')}
+              showPulseRing={true}
+              syncWithAudio={true}
+              style={styles.soundWaveVisualizer}
+            />
+          </View>
+        )}
+        
         {/* Video Actions */}
         <VideoActionButtons
           video={item}
-          isLiked={false} // You can manage this state
-          isBookmarked={false} // You can manage this state
+          isLiked={false}
+          isBookmarked={false}
           onUserProfilePress={(userId) => console.log('Profile press:', userId)}
           onLikePress={() => {
-            // Trigger heart animation on like button press too
             const newHeartAnimation = {
               id: `heart_${Date.now()}_${heartAnimationCounter}`,
               position: { x: width - 50, y: height / 2 },
@@ -493,7 +570,7 @@ const PerfectFeedScreen = () => {
         {/* Video Info */}
         <VideoInfo
           video={item}
-          onSoundPress={(soundId) => console.log('Sound press:', soundId)}
+          onSoundPress={(soundId) => handleSoundWavePress(item.id)} // NEW: Connect to sound wave
           onUserPress={(userId) => console.log('User press:', userId)}
           onHashtagPress={(hashtag) => console.log('Hashtag press:', hashtag)}
           onLocationPress={(location) => console.log('Location press:', location)}
@@ -501,7 +578,7 @@ const PerfectFeedScreen = () => {
         />
       </View>
     );
-  }, [currentIndex, heartAnimations, lastTapPosition, navigation, handleDoubleTap]);
+  }, [currentIndex, soundWaveStates, lastTapPosition, navigation, handleDoubleTap, heartAnimationCounter]);
 
   // Memoized item layout for better performance
   const getItemLayout = useCallback((data, index) => ({
@@ -559,6 +636,10 @@ const PerfectFeedScreen = () => {
           <Text style={styles.performanceText}>
             {renderingPerformance.fps}fps • {renderingPerformance.memoryUsage.toFixed(1)}MB • {apiStatus}
           </Text>
+          {/* NEW: Sound wave debug info */}
+          <Text style={styles.debugText}>
+            Vol: {(currentVideoVolume * 100).toFixed(0)}% • Waves: {Object.keys(soundWaveStates).length}
+          </Text>
         </View>
       )}
       
@@ -597,7 +678,7 @@ const PerfectFeedScreen = () => {
         bounces={true}
       />
 
-      {/* Magical Heart System - FIXED Integration with Multiple Animations */}
+      {/* Magical Heart System */}
       {heartAnimationQueue.map((heartAnimation) => (
         <MagicalHeartSystem
           key={heartAnimation.id}
@@ -641,7 +722,7 @@ const styles = StyleSheet.create({
   },
   performanceIndicator: {
     position: 'absolute',
-    top: 100, // Fixed insets reference
+    top: 100,
     left: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     paddingHorizontal: 8,
@@ -655,6 +736,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
+  // NEW: Debug text style
+  debugText: {
+    color: '#25F4EE',
+    fontSize: 8,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
   videoItemContainer: {
     width,
     height,
@@ -662,9 +751,19 @@ const styles = StyleSheet.create({
   gestureContainer: {
     flex: 1,
   },
+  // NEW: Sound wave container styles
+  soundWaveContainer: {
+    position: 'absolute',
+    bottom: 200, // Position above video info
+    left: 20,
+    zIndex: 15,
+  },
+  soundWaveVisualizer: {
+    // Additional styling if needed
+  },
   magicalHeartSystem: {
-    zIndex: 999, // Ensure it appears above video content but below header
+    zIndex: 999,
   },
 });
 
-export default PerfectFeedScreen;
+export default PerfectFeedScreen;   //when we back, we'll add hapticsystem and transition components from claude , then create conversation to include them into perfectfeedscreen

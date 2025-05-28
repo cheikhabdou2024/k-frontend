@@ -17,10 +17,10 @@ const TIKTOK_HEART_CONFIG = {
   
   // TikTok-style timing - INSTANT appearance
   HEART_APPEAR_DURATION: 0, // Instant appearance (no scale-up)
-  HEART_VISIBLE_DURATION: 800, // How long heart stays visible
-  HEART_FADE_DURATION: 400, // Fade out duration
+  HEART_VISIBLE_DURATION: 1200, // How long heart stays visible
+  HEART_FADE_DURATION: 400, // Fade out duration 
   PARTICLE_DURATION: 1200, // Particle animation duration
-  
+   
   // Physics - TikTok-like movement
   GRAVITY: 0.3,
   FLOAT_STRENGTH: -1.5, // Upward movement
