@@ -1,5 +1,5 @@
-// src/components/feed/VideoActionButton.js - IMPROVED VERSION
-import React, { useRef, useEffect, useState } from 'react';
+// src/components/feed/EnhancedVideoActionButtons.js
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -16,7 +16,7 @@ import * as Animatable from 'react-native-animatable';
 
 const { width } = Dimensions.get('window');
 
-const VideoActionButtons = ({
+const VideoActionButtons = forwardRef(({
   video,
   isLiked,
   isBookmarked,
@@ -28,18 +28,61 @@ const VideoActionButtons = ({
   onFollowPress,
   currentUserId,
   isVisible = true,
-}) => {
+}, ref) => {
   // Animation refs
   const containerFadeAnim = useRef(new Animated.Value(1)).current;
   const likeScaleAnim = useRef(new Animated.Value(1)).current;
   const followScaleAnim = useRef(new Animated.Value(1)).current;
   const heartBeatAnim = useRef(new Animated.Value(1)).current;
+  const likeCountAnim = useRef(new Animated.Value(1)).current;
+  const heartGlowAnim = useRef(new Animated.Value(0)).current;
   
   // State
-
   const [likesCount, setLikesCount] = useState(video.likes);
   const [isFollowing, setIsFollowing] = useState(video.user.isFollowing || false);
   const [showHeartBurst, setShowHeartBurst] = useState(false);
+  const [localIsLiked, setLocalIsLiked] = useState(isLiked);
+
+  // Ref to expose heart icon position
+  const heartIconRef = useRef(null);
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    // Get heart icon position for flying animation
+    getHeartIconPosition: () => {
+      return new Promise((resolve) => {
+        if (heartIconRef.current) {
+          heartIconRef.current.measureInWindow((x, y, width, height) => {
+            resolve({
+              x: x + width / 2,
+              y: y + height / 2,
+            });
+          });
+        } else {
+          // Fallback position (right side of screen)
+          resolve({
+            x: width - 50,
+            y: 400,
+          });
+        }
+      });
+    },
+    
+    // Trigger heart animation from external double-tap
+    triggerHeartAnimation: () => {
+      animateHeartFromDoubleTap();
+    },
+    
+    // Update like count from external source
+    updateLikeCount: (increment = true) => {
+      setLikesCount(prev => increment ? prev + 1 : Math.max(0, prev - 1));
+      setLocalIsLiked(increment);
+      
+      if (increment) {
+        animateHeartFromDoubleTap();
+      }
+    }
+  }));
 
   // Animate container visibility
   useEffect(() => {
@@ -52,11 +95,11 @@ const VideoActionButtons = ({
 
   // Heart beat animation for liked videos
   useEffect(() => {
-    if (isLiked) {
+    if (localIsLiked) {
       const heartBeat = Animated.loop(
         Animated.sequence([
           Animated.timing(heartBeatAnim, {
-            toValue: 1.1,
+            toValue: 1.15,
             duration: 600,
             useNativeDriver: true,
           }),
@@ -71,39 +114,74 @@ const VideoActionButtons = ({
       
       return () => heartBeat.stop();
     }
-  }, [isLiked]);
+  }, [localIsLiked]);
 
-  // Enhanced like button handler
- const handleLikePress = () => {
-  if (onLikePress) {
-    onLikePress(video.id, !isLiked);
-  }
-    // Optimistic updates
-    setIsLiked(newLikedState);
-    setLikesCount(prev => newLikedState ? prev + 1 : Math.max(0, prev - 1));
-    
-    // Haptic feedback
-    if (newLikedState) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setShowHeartBurst(true);
-      setTimeout(() => setShowHeartBurst(false), 1000);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    
-    // Like animation
+  // Animate heart when triggered by double-tap
+  const animateHeartFromDoubleTap = () => {
+    // Heart icon pulse animation
     Animated.sequence([
       Animated.timing(likeScaleAnim, {
-        toValue: newLikedState ? 1.3 : 0.8,
-        duration: 150,
+        toValue: 1.4,
+        duration: 200,
         useNativeDriver: true,
       }),
       Animated.timing(likeScaleAnim, {
         toValue: 1,
-        duration: 150,
+        duration: 300,
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Glow effect
+    Animated.sequence([
+      Animated.timing(heartGlowAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heartGlowAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Like count bounce
+    Animated.sequence([
+      Animated.timing(likeCountAnim, {
+        toValue: 1.3,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(likeCountAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Heart burst effect
+    setShowHeartBurst(true);
+    setTimeout(() => setShowHeartBurst(false), 1000);
+  };
+
+  // Enhanced like button handler
+  const handleLikePress = () => {
+    const newLikedState = !localIsLiked;
+    setLocalIsLiked(newLikedState);
+    setLikesCount(prev => newLikedState ? prev + 1 : Math.max(0, prev - 1));
+    
+    // REMOVED: Haptic feedback
+    // if (newLikedState) {
+    //   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    //   animateHeartFromDoubleTap();
+    // } else {
+    //   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // }
+    
+    if (newLikedState) {
+      animateHeartFromDoubleTap();
+    }
     
     // Call parent handler
     if (onLikePress) {
@@ -118,12 +196,12 @@ const VideoActionButtons = ({
     const newFollowingState = !isFollowing;
     setIsFollowing(newFollowingState);
     
-    // Haptic feedback
-    Haptics.impactAsync(
-      newFollowingState 
-        ? Haptics.ImpactFeedbackStyle.Medium 
-        : Haptics.ImpactFeedbackStyle.Light
-    );
+    // REMOVED: Haptic feedback
+    // Haptics.impactAsync(
+    //   newFollowingState 
+    //     ? Haptics.ImpactFeedbackStyle.Medium 
+    //     : Haptics.ImpactFeedbackStyle.Light
+    // );
     
     // Follow button animation
     Animated.sequence([
@@ -146,17 +224,17 @@ const VideoActionButtons = ({
 
   // Enhanced interaction handlers
   const handleCommentPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // REMOVED: Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (onCommentPress) onCommentPress(video.id);
   };
 
   const handleSharePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // REMOVED: Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (onSharePress) onSharePress(video.id);
   };
 
   const handleBookmarkPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // REMOVED: Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (onBookmarkPress) onBookmarkPress(video.id);
   };
 
@@ -213,10 +291,11 @@ const VideoActionButtons = ({
     </View>
   );
 
-  // Render like button with enhanced effects
+  // Render enhanced like button with TikTok-style effects
   const renderLikeButton = () => (
     <View style={styles.actionButtonContainer}>
       <TouchableOpacity 
+        ref={heartIconRef}
         style={styles.actionButton}
         onPress={handleLikePress}
         activeOpacity={0.8}
@@ -231,10 +310,24 @@ const VideoActionButtons = ({
             }
           ]}
         >
+          {/* Heart glow effect */}
+          <Animated.View
+            style={[
+              styles.heartGlow,
+              {
+                opacity: heartGlowAnim,
+                transform: [{ scale: heartGlowAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 2],
+                }) }]
+              }
+            ]}
+          />
+          
           <Ionicons 
-            name={isLiked ? "heart" : "heart-outline"} 
+            name={localIsLiked ? "heart" : "heart-outline"} 
             size={32} 
-            color={isLiked ? "#FE2C55" : "#FFF"} 
+            color={localIsLiked ? "#FE2C55" : "#FFF"} 
           />
           
           {/* Heart burst effect */}
@@ -262,9 +355,17 @@ const VideoActionButtons = ({
           )}
         </Animated.View>
       </TouchableOpacity>
-      <Text style={[styles.actionText, isLiked && styles.likedText]}>
+      
+      {/* Enhanced like count with animation */}
+      <Animated.Text 
+        style={[
+          styles.actionText, 
+          localIsLiked && styles.likedText,
+          { transform: [{ scale: likeCountAnim }] }
+        ]}
+      >
         {formatCount(likesCount)}
-      </Text>
+      </Animated.Text>
     </View>
   );
 
@@ -362,7 +463,7 @@ const VideoActionButtons = ({
       {/* Profile button with follow */}
       {renderProfileButton()}
       
-      {/* Like button */}
+      {/* Enhanced Like button */}
       {renderLikeButton()}
       
       {/* Comment button */}
@@ -378,7 +479,7 @@ const VideoActionButtons = ({
       {renderMusicDisc()}
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -435,7 +536,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   
-  // Action button styles
+  // Enhanced action button styles
   actionButtonContainer: {
     alignItems: 'center',
     marginBottom: 20,
@@ -470,7 +571,15 @@ const styles = StyleSheet.create({
     color: '#FFD700',
   },
   
-  // Heart burst effect
+  // Enhanced heart effects
+  heartGlow: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FE2C55',
+    opacity: 0.3,
+  },
   heartBurst: {
     position: 'absolute',
     top: 0,
