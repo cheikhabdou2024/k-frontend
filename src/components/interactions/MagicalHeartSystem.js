@@ -1,4 +1,4 @@
-// src/components/interactions/MagicalHeartSystem.js
+// src/components/interactions/MagicalHeartSystem.js - IMPROVED VERSION
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Text } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -9,106 +9,151 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // Configuration for magical hearts
 const HEART_CONFIG = {
   // Heart generation
-  MAX_HEARTS_PER_TAP: 8,
-  PARTICLE_COUNT: 12,
-  BURST_RADIUS: 60,
+  MAX_HEARTS_PER_TAP: 6, // Reduced for better performance
+  PARTICLE_COUNT: 8, // Reduced for better performance
+  BURST_RADIUS: 50,
   
-  // Animation timings
-  HEART_DURATION: 2000,
-  PARTICLE_DURATION: 1500,
-  STAGGER_DELAY: 50,
+  // Animation timings - Made faster for rapid fire
+  HEART_DURATION: 1500, // Reduced from 2000
+  PARTICLE_DURATION: 1200, // Reduced from 1500
+  STAGGER_DELAY: 0, // Reduced from 50
   
   // Physics
-  GRAVITY: 0.5,
-  BOUNCE_DAMPING: 0.7,
-  AIR_RESISTANCE: 0.98,
+  GRAVITY: 0.4, // Reduced for floatier effect
+  BOUNCE_DAMPING: 0.8,
+  AIR_RESISTANCE: 0.99,
   
   // Visual effects
-  HEART_SIZES: [20, 24, 28, 32, 36],
-  COLORS: ['#FE2C55', '#FF6B9D', '#FF8CC8', '#FFB3E6', '#FFC0E5'],
-  GLOW_INTENSITY: 0.8,
+  HEART_SIZES: [16, 20, 24, 28], // Slightly smaller for performance
+  COLORS: ['#FE2C55', '#FF6B9D', '#FF8CC8', '#FFB3E6'],
+  GLOW_INTENSITY: 0.6,
+  
+  // Performance optimizations
+  AUTO_CLEANUP_DELAY: 1000, // Auto cleanup after 2 seconds
+  MAX_CONCURRENT_ANIMATIONS: 5, // Limit concurrent animations
 };
 
 const MagicalHeartSystem = ({ 
   isVisible, 
   onAnimationEnd, 
   tapPosition = { x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 },
-  intensity = 'normal', // 'light', 'normal', 'heavy', 'extreme'
+  intensity = 'normal',
   style 
 }) => {
   const [hearts, setHearts] = useState([]);
   const [particles, setParticles] = useState([]);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  
+  // Refs for cleanup
+  const animationTimeoutRef = useRef(null);
+  const cleanupTimeoutRef = useRef(null);
+  const heartsRef = useRef([]); // Keep track of active hearts
   
   // Enhanced heart generation based on intensity
   const getHeartCount = () => {
     switch (intensity) {
-      case 'light': return 3;
-      case 'normal': return 5;
-      case 'heavy': return 7;
+      case 'light': return 2;
+      case 'normal': return 4;
+      case 'heavy': return 6;
       case 'extreme': return HEART_CONFIG.MAX_HEARTS_PER_TAP;
-      default: return 5;
+      default: return 4;
     }
   };
 
   const getParticleCount = () => {
     switch (intensity) {
-      case 'light': return 6;
-      case 'normal': return 8;
-      case 'heavy': return 10;
+      case 'light': return 4;
+      case 'normal': return 6;
+      case 'heavy': return 8;
       case 'extreme': return HEART_CONFIG.PARTICLE_COUNT;
-      default: return 8;
+      default: return 6;
     }
   };
 
-  // Create magical heart explosion
+  // Start animation IMMEDIATELY when component mounts (no useEffect delay)
   useEffect(() => {
-    if (isVisible && !isAnimating) {
-      createMagicalExplosion();
+    if (isVisible && !hasStarted) {
+      setHasStarted(true);
+      // Start immediately - no setTimeout, no delay
+      createMagicalExplosionImmediate();
     }
-  }, [isVisible]);
+  }, [isVisible, hasStarted]);
 
-  const createMagicalExplosion = () => {
+  // Auto cleanup effect
+  useEffect(() => {
+    if (isAnimating) {
+      // Set auto cleanup
+      cleanupTimeoutRef.current = setTimeout(() => {
+        cleanup();
+      }, HEART_CONFIG.AUTO_CLEANUP_DELAY);
+    }
+    
+    return () => {
+      if (cleanupTimeoutRef.current) {
+        clearTimeout(cleanupTimeoutRef.current);
+      }
+    };
+  }, [isAnimating]);
+
+  // INSTANT animation creation - no delays
+  const createMagicalExplosionImmediate = () => {
+    if (isAnimating) return;
+    
     setIsAnimating(true);
     
-    // Enhanced haptic feedback based on intensity
-    const hapticIntensity = {
-      light: Haptics.ImpactFeedbackStyle.Light,
-      normal: Haptics.ImpactFeedbackStyle.Medium,
-      heavy: Haptics.ImpactFeedbackStyle.Heavy,
-      extreme: Haptics.ImpactFeedbackStyle.Heavy
-    }[intensity] || Haptics.ImpactFeedbackStyle.Medium;
+    // Create hearts with IMMEDIATE visibility
+    const newHearts = createInstantHearts();
+    const newParticles = createInstantParticles();
     
-    Haptics.impactAsync(hapticIntensity);
-    
-    // Create hearts with physics
-    const newHearts = createPhysicsHearts();
-    const newParticles = createMagicalParticles();
-    
+    // Set hearts and particles IMMEDIATELY
     setHearts(newHearts);
     setParticles(newParticles);
+    heartsRef.current = newHearts;
     
-    // Start animations
-    animateHearts(newHearts);
-    animateParticles(newParticles);
+    // Start animations with NO delays
+    animateHeartsInstant(newHearts);
+    animateParticlesInstant(newParticles);
     
-    // Cleanup after animation
-    setTimeout(() => {
-      setIsAnimating(false);
-      setHearts([]);
-      setParticles([]);
-      if (onAnimationEnd) onAnimationEnd();
+    // Set cleanup timer
+    animationTimeoutRef.current = setTimeout(() => {
+      cleanup();
     }, HEART_CONFIG.HEART_DURATION);
   };
 
-  // Create hearts with realistic physics
-  const createPhysicsHearts = () => {
+  // Cleanup function
+  const cleanup = () => {
+    setIsAnimating(false);
+    setHearts([]);
+    setParticles([]);
+    setHasStarted(false);
+    heartsRef.current = [];
+    
+    // Clear timeouts
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
+    }
+    
+    if (cleanupTimeoutRef.current) {
+      clearTimeout(cleanupTimeoutRef.current);
+      cleanupTimeoutRef.current = null;
+    }
+    
+    // Notify parent
+    if (onAnimationEnd) {
+      onAnimationEnd();
+    }
+  };
+
+  // Create hearts that appear INSTANTLY (no scale-up animation)
+  const createInstantHearts = () => {
     const heartCount = getHeartCount();
     const hearts = [];
     
     for (let i = 0; i < heartCount; i++) {
-      const angle = (Math.PI * 2 * i) / heartCount + (Math.random() - 0.5) * 0.5;
-      const speed = 3 + Math.random() * 4;
+      const angle = (Math.PI * 2 * i) / heartCount + (Math.random() - 0.5) * 0.8;
+      const speed = 2 + Math.random() * 3;
       const size = HEART_CONFIG.HEART_SIZES[Math.floor(Math.random() * HEART_CONFIG.HEART_SIZES.length)];
       
       hearts.push({
@@ -116,45 +161,45 @@ const MagicalHeartSystem = ({
         x: tapPosition.x,
         y: tapPosition.y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 2, // Initial upward boost
+        vy: Math.sin(angle) * speed - 1.5,
         size,
         color: HEART_CONFIG.COLORS[Math.floor(Math.random() * HEART_CONFIG.COLORS.length)],
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 10,
+        rotationSpeed: (Math.random() - 0.5) * 8,
         opacity: 1,
-        scale: 0,
+        scale: 1, // Start at full scale immediately
         glowIntensity: Math.random() * HEART_CONFIG.GLOW_INTENSITY,
-        // Animation refs
-        scaleAnim: new Animated.Value(0),
-        opacityAnim: new Animated.Value(1),
+        // Animation refs - START AT VISIBLE VALUES
+        scaleAnim: new Animated.Value(1), // Start at 1, not 0
+        opacityAnim: new Animated.Value(1), // Start at 1, not 0
         positionAnimX: new Animated.Value(tapPosition.x),
         positionAnimY: new Animated.Value(tapPosition.y),
         rotationAnim: new Animated.Value(0),
-        glowAnim: new Animated.Value(0),
+        glowAnim: new Animated.Value(0.3), // Start with some glow
       });
     }
     
     return hearts;
   };
 
-  // Create magical particle effects
-  const createMagicalParticles = () => {
+  // Create particles that appear INSTANTLY
+  const createInstantParticles = () => {
     const particleCount = getParticleCount();
     const particles = [];
     
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount;
-      const distance = HEART_CONFIG.BURST_RADIUS + Math.random() * 30;
+      const distance = HEART_CONFIG.BURST_RADIUS + Math.random() * 20;
       
       particles.push({
         id: `particle_${Date.now()}_${i}`,
         x: tapPosition.x + Math.cos(angle) * distance,
         y: tapPosition.y + Math.sin(angle) * distance,
-        size: 4 + Math.random() * 8,
+        size: 3 + Math.random() * 5,
         color: HEART_CONFIG.COLORS[Math.floor(Math.random() * HEART_CONFIG.COLORS.length)],
-        // Animation refs
-        scaleAnim: new Animated.Value(0),
-        opacityAnim: new Animated.Value(1),
+        // Animation refs - START AT VISIBLE VALUES
+        scaleAnim: new Animated.Value(1), // Start at 1, not 0
+        opacityAnim: new Animated.Value(0.8), // Start visible
         positionAnimX: new Animated.Value(tapPosition.x),
         positionAnimY: new Animated.Value(tapPosition.y),
       });
@@ -163,52 +208,32 @@ const MagicalHeartSystem = ({
     return particles;
   };
 
-  // Animate hearts with realistic physics
-  const animateHearts = (heartsArray) => {
+  // INSTANT heart animations - hearts appear immediately, then animate
+  const animateHeartsInstant = (heartsArray) => {
     heartsArray.forEach((heart, index) => {
-      const delay = index * HEART_CONFIG.STAGGER_DELAY;
+      // NO DELAY - hearts are already visible
       
-      // Scale animation - pop in effect
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.spring(heart.scaleAnim, {
-          toValue: 1,
-          tension: 150,
-          friction: 6,
-          useNativeDriver: true,
-        }),
-        Animated.delay(HEART_CONFIG.HEART_DURATION - 500),
-        Animated.timing(heart.scaleAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      
-      // Opacity animation
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(heart.opacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.delay(HEART_CONFIG.HEART_DURATION - 700),
+      // Just animate opacity fade out after some time
+      setTimeout(() => {
         Animated.timing(heart.opacityAnim, {
           toValue: 0,
-          duration: 500,
+          duration: 600,
           useNativeDriver: true,
-        }),
-      ]).start();
+        }).start();
+      }, HEART_CONFIG.HEART_DURATION - 600);
       
-      // Physics-based movement
+      // Start physics immediately with no delay
       const animatePhysics = () => {
         const startTime = Date.now();
+        let animationFrame;
+        
         const animate = () => {
           const elapsed = Date.now() - startTime;
           const progress = elapsed / HEART_CONFIG.HEART_DURATION;
           
-          if (progress >= 1) return;
+          if (progress >= 1 || !heartsRef.current.includes(heart)) {
+            return;
+          }
           
           // Apply gravity and air resistance
           heart.vy += HEART_CONFIG.GRAVITY;
@@ -234,30 +259,35 @@ const MagicalHeartSystem = ({
           heart.rotation += heart.rotationSpeed;
           
           // Apply animations
-          heart.positionAnimX.setValue(heart.x);
-          heart.positionAnimY.setValue(heart.y);
-          heart.rotationAnim.setValue(heart.rotation);
+          try {
+            heart.positionAnimX.setValue(heart.x);
+            heart.positionAnimY.setValue(heart.y);
+            heart.rotationAnim.setValue(heart.rotation);
+          } catch (error) {
+            return;
+          }
           
           // Continue animation
-          requestAnimationFrame(animate);
+          animationFrame = requestAnimationFrame(animate);
         };
         
-        requestAnimationFrame(animate);
+        // Start immediately - no delay
+        animationFrame = requestAnimationFrame(animate);
       };
       
-      setTimeout(animatePhysics, delay);
+      animatePhysics();
       
-      // Glow pulse effect
+      // Glow pulse effect (start immediately)
       Animated.loop(
         Animated.sequence([
           Animated.timing(heart.glowAnim, {
-            toValue: 1,
-            duration: 600,
+            toValue: 6,
+            duration: 800,
             useNativeDriver: true,
           }),
           Animated.timing(heart.glowAnim, {
-            toValue: 0,
-            duration: 600,
+            toValue: 0.3,
+            duration: 400,
             useNativeDriver: true,
           }),
         ])
@@ -265,64 +295,39 @@ const MagicalHeartSystem = ({
     });
   };
 
-  // Animate particles
-  const animateParticles = (particlesArray) => {
+  // INSTANT particle animations
+  const animateParticlesInstant = (particlesArray) => {
     particlesArray.forEach((particle, index) => {
-      const delay = index * 30;
+      // Particles are already visible, just animate them out
       
-      // Scale animation
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(particle.scaleAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.delay(300),
-        Animated.timing(particle.scaleAnim, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Immediate scale and fade animation
+      Animated.timing(particle.scaleAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
       
-      // Opacity animation
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(particle.opacityAnim, {
-          toValue: 0.8,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.delay(200),
-        Animated.timing(particle.opacityAnim, {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      Animated.timing(particle.opacityAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
       
-      // Position animation - spread out
-      const finalX = particle.x + (Math.random() - 0.5) * 100;
-      const finalY = particle.y - 50 - Math.random() * 100;
+      // Position animation - spread out immediately
+      const finalX = particle.x + (Math.random() - 0.5) * 80;
+      const finalY = particle.y - 40 - Math.random() * 80;
       
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(particle.positionAnimX, {
-          toValue: finalX,
-          duration: HEART_CONFIG.PARTICLE_DURATION,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      Animated.timing(particle.positionAnimX, {
+        toValue: finalX,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
       
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(particle.positionAnimY, {
-          toValue: finalY,
-          duration: HEART_CONFIG.PARTICLE_DURATION,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      Animated.timing(particle.positionAnimY, {
+        toValue: finalY,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
     });
   };
 
@@ -357,13 +362,13 @@ const MagicalHeartSystem = ({
         style={[
           styles.heartGlow,
           {
-            width: heart.size * 2,
-            height: heart.size * 2,
-            borderRadius: heart.size,
+            width: heart.size * 1.8,
+            height: heart.size * 1.8,
+            borderRadius: heart.size * 0.9,
             backgroundColor: heart.color,
             opacity: heart.glowAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0.2, 0.6],
+              outputRange: [0.1, 0.4],
               extrapolate: 'clamp'
             }),
           }
@@ -405,6 +410,7 @@ const MagicalHeartSystem = ({
     />
   );
 
+  // Only render if we have content to show
   if (!isVisible && hearts.length === 0) return null;
 
   return (
@@ -416,12 +422,12 @@ const MagicalHeartSystem = ({
       {particles.map(renderParticle)}
       
       {/* Screen flash effect for extreme intensity */}
-      {intensity === 'extreme' && (
+      {intensity === 'extreme' && hearts.length > 0 && (
         <Animated.View 
           style={[
             styles.screenFlash,
             { 
-              opacity: hearts.length > 0 ? 0.1 : 0 
+              opacity: 0.05 
             }
           ]} 
         />
@@ -447,21 +453,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     shadowColor: '#FE2C55',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 8,
   },
   heartIcon: {
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 2,
   },
   particle: {
     shadowColor: '#FE2C55',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 5,
-    elevation: 5,
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 3,
   },
   screenFlash: {
     position: 'absolute',
@@ -474,4 +480,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MagicalHeartSystem;
+export default MagicalHeartSystem; 

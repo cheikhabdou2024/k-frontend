@@ -1,5 +1,5 @@
-// src/screens/feed/PerfectFeedScreen.js
-import React, { useState, useEffect, useRef, useMemo, useCallback, insets } from 'react';
+// src/screens/feed/PerfectFeedScreen.js - FIXED VERSION
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import { TapGestureHandler, State } from 'react-native-gesture-handler'; // Added import
 
 // Components
 import PerfectAdaptiveVideo from '../../components/video/PerfectAdaptiveVideo';
@@ -64,6 +65,7 @@ const PerfectFeedScreen = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasMoreVideos, setHasMoreVideos] = useState(true);
   const [apiStatus, setApiStatus] = useState('loading');
+  const [lastTapPosition, setLastTapPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
   
   // Performance state
   const [renderingPerformance, setRenderingPerformance] = useState({
@@ -74,9 +76,8 @@ const PerfectFeedScreen = () => {
   
   // Heart animation state - Updated for MagicalHeartSystem
   const [heartAnimations, setHeartAnimations] = useState({});
-  const [lastTapPosition, setLastTapPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
-  const [magicalHeartVisible, setMagicalHeartVisible] = useState(false);
-  const [heartIntensity, setHeartIntensity] = useState('normal');
+  const [heartAnimationQueue, setHeartAnimationQueue] = useState([]); // Queue for multiple animations
+  const [heartAnimationCounter, setHeartAnimationCounter] = useState(0); // Unique ID for each animation
   
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -88,6 +89,7 @@ const PerfectFeedScreen = () => {
   const performanceMonitorRef = useRef(null);
   const gestureStartTime = useRef(0);
   const lastTapTime = useRef(0);
+  const doubleTapRef = useRef(); // Added for double tap gesture
   
   // Animation refs
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -366,16 +368,48 @@ const PerfectFeedScreen = () => {
     waitForInteraction: false,
   };
 
-  // Enhanced double tap handler for MagicalHeartSystem
+  // FIXED: Enhanced double tap handler for MagicalHeartSystem
   const handleDoubleTap = (event) => {
-    // If you want to use the tap position:
-    // setLastTapPosition({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
-    setMagicalHeartVisible(true);
+    if (event.nativeEvent.state === State.ACTIVE) {
+      console.log('🎉 Double tap triggered!'); // Debug log
+      
+      // Get tap position from the event
+      const tapX = event.nativeEvent.absoluteX || event.nativeEvent.x || SCREEN_WIDTH / 2;
+      const tapY = event.nativeEvent.absoluteY || event.nativeEvent.y || SCREEN_HEIGHT / 2;
+      setLastTapPosition({ x: tapX, y: tapY });
+
+      // Create a new heart animation with unique ID
+      const newHeartAnimation = {
+        id: `heart_${Date.now()}_${heartAnimationCounter}`,
+        position: { x: tapX, y: tapY },
+        intensity: 'heavy',
+        timestamp: Date.now()
+      };
+      
+      // Add to animation queue
+      setHeartAnimationQueue(prev => [...prev, newHeartAnimation]);
+      setHeartAnimationCounter(prev => prev + 1);
+      
+      // Haptic feedback
+      if (PERFECT_FEED_CONFIG.HAPTIC_FEEDBACK_ENABLED) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
+      
+      // Also trigger like action
+      const currentVideo = videos[currentIndex];
+      if (currentVideo) {
+        console.log('❤️ Liking video:', currentVideo.id);
+        // You can add your like logic here
+      }
+    }
   };
 
   // Handle magical heart animation end
-  const handleMagicalHeartAnimationEnd = () => {
-    setMagicalHeartVisible(false);
+  const handleMagicalHeartAnimationEnd = (heartId) => {
+    console.log('🎉 Magical heart animation ended:', heartId); // Debug log
+    
+    // Remove the completed animation from queue
+    setHeartAnimationQueue(prev => prev.filter(heart => heart.id !== heartId));
   };
 
   // Handle pull-to-refresh
@@ -401,29 +435,37 @@ const PerfectFeedScreen = () => {
     }
   };
 
-  // Render individual video item
+  // UPDATED: Render individual video item with proper gesture handling
   const renderVideoItem = useCallback(({ item, index }) => {
     const isActive = index === currentIndex;
     const isHeartAnimationVisible = heartAnimations[item.id] || false;
     
     return (
       <View style={styles.videoItemContainer}>
-        {/* Perfect Video Player */}
-        <PerfectAdaptiveVideo
-          key={item.id}
-          videoRef={(ref) => { videoRefs.current[item.id] = ref; }}
-          source={{ uri: item.videoUrl }}
-          videoId={item.id}
-          shouldPlay={isActive}
-          isLooping={true}
-          fillMode="smart"
-          priority={isActive ? 'high' : 'normal'}
-          preloadNext={() => videoQueueManager.getNextVideoForPreload()}
-          onTransitionStart={() => console.log(`🎬 Video ${item.id} starting transition`)}
-          onTransitionEnd={() => console.log(`✅ Video ${item.id} transition complete`)}
-        />
-        
-       
+        {/* Double Tap Gesture Handler - FIXED */}
+        <TapGestureHandler
+          ref={doubleTapRef}
+          onHandlerStateChange={handleDoubleTap}
+          numberOfTaps={2}
+          maxDurationMs={500}
+        >
+          <View style={styles.gestureContainer}>
+            {/* Perfect Video Player */}
+            <PerfectAdaptiveVideo
+              key={item.id}
+              videoRef={(ref) => { videoRefs.current[item.id] = ref; }}
+              source={{ uri: item.videoUrl }}
+              videoId={item.id}
+              shouldPlay={isActive}
+              isLooping={true}
+              fillMode="smart"
+              priority={isActive ? 'high' : 'normal'}
+              preloadNext={() => videoQueueManager.getNextVideoForPreload()}
+              onTransitionStart={() => console.log(`🎬 Video ${item.id} starting transition`)}
+              onTransitionEnd={() => console.log(`✅ Video ${item.id} transition complete`)}
+            />
+          </View>
+        </TapGestureHandler>
         
         {/* Video Actions */}
         <VideoActionButtons
@@ -431,7 +473,18 @@ const PerfectFeedScreen = () => {
           isLiked={false} // You can manage this state
           isBookmarked={false} // You can manage this state
           onUserProfilePress={(userId) => console.log('Profile press:', userId)}
-          onLikePress={() => handleDoubleTap(item.id, { x: width - 50, y: height / 2 })}
+          onLikePress={() => {
+            // Trigger heart animation on like button press too
+            const newHeartAnimation = {
+              id: `heart_${Date.now()}_${heartAnimationCounter}`,
+              position: { x: width - 50, y: height / 2 },
+              intensity: 'normal',
+              timestamp: Date.now()
+            };
+            
+            setHeartAnimationQueue(prev => [...prev, newHeartAnimation]);
+            setHeartAnimationCounter(prev => prev + 1);
+          }}
           onCommentPress={() => navigation.navigate('CommentsScreen', { videoId: item.id })}
           onBookmarkPress={() => console.log('Bookmark press:', item.id)}
           onSharePress={() => console.log('Share press:', item.id)}
@@ -448,7 +501,7 @@ const PerfectFeedScreen = () => {
         />
       </View>
     );
-  }, [currentIndex, heartAnimations, lastTapPosition, navigation]);
+  }, [currentIndex, heartAnimations, lastTapPosition, navigation, handleDoubleTap]);
 
   // Memoized item layout for better performance
   const getItemLayout = useCallback((data, index) => ({
@@ -544,14 +597,17 @@ const PerfectFeedScreen = () => {
         bounces={true}
       />
 
-      {/* Magical Heart System - New Addition */}
-      <MagicalHeartSystem
-        isVisible={magicalHeartVisible}
-        onAnimationEnd={() => setMagicalHeartVisible(false)}
-        tapPosition={lastTapPosition}
-        intensity={heartIntensity}
-        style={styles.magicalHeartSystem}
-      />
+      {/* Magical Heart System - FIXED Integration with Multiple Animations */}
+      {heartAnimationQueue.map((heartAnimation) => (
+        <MagicalHeartSystem
+          key={heartAnimation.id}
+          isVisible={true}
+          onAnimationEnd={() => handleMagicalHeartAnimationEnd(heartAnimation.id)}
+          tapPosition={heartAnimation.position}
+          intensity={heartAnimation.intensity}
+          style={styles.magicalHeartSystem}
+        />
+      ))}
     </View>
   );
 };
@@ -585,7 +641,7 @@ const styles = StyleSheet.create({
   },
   performanceIndicator: {
     position: 'absolute',
-    top: insets?.top + 50 || 50,
+    top: 100, // Fixed insets reference
     left: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     paddingHorizontal: 8,
@@ -602,6 +658,9 @@ const styles = StyleSheet.create({
   videoItemContainer: {
     width,
     height,
+  },
+  gestureContainer: {
+    flex: 1,
   },
   magicalHeartSystem: {
     zIndex: 999, // Ensure it appears above video content but below header
