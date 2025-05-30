@@ -114,6 +114,8 @@ const TabNavigator = () => {
         component={CreateNavigator}
         options={{ tabBarLabel: 'Create' }}
       />
+
+      
       <Tab.Screen 
         name={TABS.INBOX} 
         component={InboxScreen}
